@@ -1,0 +1,6 @@
+@Axivora_HostAddress = http://localhost:5222
+
+GET {{Axivora_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

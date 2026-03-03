@@ -4,7 +4,7 @@ using Axivora.Services.Interfaces;
 
 namespace Axivora.Controllers
 {
-    [Route("api/[controller]")]
+    [Route("api/[controller]/[action]")]
     [ApiController]
     public class AuthController : ControllerBase
     {

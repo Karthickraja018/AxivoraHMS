@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text.Json;
+using Axivora.Models;
 
 namespace Axivora.Middleware
 {
@@ -64,10 +65,5 @@ namespace Axivora.Middleware
         }
     }
 
-    public class ErrorResponse
-    {
-        public int StatusCode { get; set; }
-        public string Message { get; set; }
-        public string Details { get; set; }
-    }
+    
 }

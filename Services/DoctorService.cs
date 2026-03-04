@@ -30,6 +30,31 @@ namespace Axivora.Services
             return _mapper.Map<IEnumerable<DoctorDto>>(doctors);
         }
 
+        public async Task<PaginationResponse<DoctorDto>> GetAllDoctorsAsync(PaginationParams paginationParams)
+        {
+            var query = _context.Doctors
+                .Include(d => d.Address)
+                .Include(d => d.DoctorDepartments)
+                    .ThenInclude(dd => dd.Department)
+                .Where(d => !d.IsDeleted);
+
+            var totalCount = await query.CountAsync();
+
+            var doctors = await query
+                .OrderBy(d => d.FullName)
+                .Skip((paginationParams.PageNumber - 1) * paginationParams.PageSize)
+                .Take(paginationParams.PageSize)
+                .ToListAsync();
+
+            var doctorDtos = _mapper.Map<IEnumerable<DoctorDto>>(doctors);
+
+            return new PaginationResponse<DoctorDto>(
+                doctorDtos,
+                totalCount,
+                paginationParams.PageNumber,
+                paginationParams.PageSize);
+        }
+
         public async Task<DoctorDto> GetDoctorByIdAsync(int doctorId)
         {
             var doctor = await _context.Doctors

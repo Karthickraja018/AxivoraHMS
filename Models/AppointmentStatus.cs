@@ -5,11 +5,9 @@ namespace Axivora.Models
 {
     public class AppointmentStatus
     {
-        [Key]
         public int StatusId { get; set; }
 
-        [Required]
-        [StringLength(50)]
+        [Required(ErrorMessage = "Status name is required")]
         public string StatusName { get; set; } = null!;
 
         // Navigation properties

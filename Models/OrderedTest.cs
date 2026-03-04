@@ -5,20 +5,18 @@ namespace Axivora.Models
 {
     public class OrderedTest
     {
-        [Key]
         public int OrderedTestId { get; set; }
 
-        [Required]
         public int ConsultationId { get; set; }
 
-        [Required]
         public int LabTestId { get; set; }
 
-        [StringLength(50)]
-        public string Status { get; set; } = "Pending";
+        [Required(ErrorMessage = "Status is required")]
+        public string Status { get; set; } = null!;
 
         public string? Result { get; set; }
 
+        [DataType(DataType.DateTime)]
         public DateTime? ResultDate { get; set; }
 
         // Navigation properties

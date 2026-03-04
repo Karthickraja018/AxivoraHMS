@@ -6,32 +6,25 @@ namespace Axivora.Models
 {
     public class Address
     {
-        [Key]
         public int AddressId { get; set; }
 
-        [Required]
-        [StringLength(200)]
+        [Required(ErrorMessage = "Address Line 1 is required")]
         public string AddressLine1 { get; set; } = null!;
 
-        [StringLength(200)]
         public string? AddressLine2 { get; set; }
 
-        [Required]
-        [StringLength(100)]
+        [Required(ErrorMessage = "City is required")]
         public string City { get; set; } = null!;
 
-        [Required]
-        [StringLength(100)]
+        [Required(ErrorMessage = "State is required")]
         public string State { get; set; } = null!;
 
-        [StringLength(20)]
         public string? PostalCode { get; set; }
 
-        [Required]
-        [StringLength(100)]
+        [Required(ErrorMessage = "Country is required")]
         public string Country { get; set; } = null!;
 
-        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+        public DateTime CreatedAt { get; set; }
 
         // Navigation properties
         public ICollection<Patient> Patients { get; set; } = new List<Patient>();

@@ -5,11 +5,9 @@ namespace Axivora.Models
 {
     public class LabTest
     {
-        [Key]
         public int LabTestId { get; set; }
 
-        [Required]
-        [StringLength(150)]
+        [Required(ErrorMessage = "Test name is required")]
         public string TestName { get; set; } = null!;
 
         // Navigation properties

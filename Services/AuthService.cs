@@ -1,22 +1,26 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
+using Microsoft.IdentityModel.Tokens;
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
+using System.Security.Cryptography;
+using System.Text;
 using Axivora.Data;
 using Axivora.DTOs;
 using Axivora.Models;
 using Axivora.Services.Interfaces;
-using System.Security.Cryptography;
-using System.Text;
 
 namespace Axivora.Services
 {
     public class AuthService : IAuthService
     {
         private readonly AxivoraDbContext _context;
-        // TODO: Inject IConfiguration for JWT secret key
-        // TODO: Inject IEmailService for sending verification/reset emails
+        private readonly IConfiguration _configuration;
 
-        public AuthService(AxivoraDbContext context)
+        public AuthService(AxivoraDbContext context, IConfiguration configuration)
         {
             _context = context;
+            _configuration = configuration;
         }
 
         public async Task<AuthResponseDto> RegisterAsync(RegisterUserDto registerDto)
@@ -26,14 +30,14 @@ namespace Axivora.Services
                 throw new InvalidOperationException("Email already registered.");
 
             // 2. Validate role
-            if (registerDto.Role != "Patient" && registerDto.Role != "Doctor")
-                throw new InvalidOperationException("Invalid role. Must be 'Patient' or 'Doctor'.");
+            if (registerDto.Role != "Patient" && registerDto.Role != "Doctor" && registerDto.Role != "Admin")
+                throw new InvalidOperationException("Invalid role. Must be 'Patient', 'Doctor', or 'Admin'.");
 
             // 3. Create user
             var user = new User
             {
                 Email = registerDto.Email,
-                Password = HashPassword(registerDto.Password), // Hash password
+                PasswordHash = HashPassword(registerDto.Password), // Hash password
                 IsActive = true,
                 IsDeleted = false,
                 CreatedAt = DateTime.UtcNow,
@@ -66,7 +70,7 @@ namespace Axivora.Services
             // await _emailService.SendVerificationEmailAsync(user.Email, verificationCode);
 
             // 6. Generate JWT token (TODO: implement proper JWT)
-            var token = GenerateTemporaryToken(user.UserId, registerDto.Role);
+            var token = GenerateJwtToken(user.UserId, user.Email, registerDto.Role);
 
             // 7. Check if profile is completed
             bool profileCompleted = false;
@@ -102,7 +106,7 @@ namespace Axivora.Services
                 throw new UnauthorizedAccessException("Invalid email or password.");
 
             // 2. Verify password
-            if (!VerifyPassword(loginDto.Password, user.Password))
+            if (!VerifyPassword(loginDto.Password, user.PasswordHash))
                 throw new UnauthorizedAccessException("Invalid email or password.");
 
             // 3. Check if user is active
@@ -114,7 +118,7 @@ namespace Axivora.Services
             var role = userRole?.Role?.RoleName ?? "Patient";
 
             // 5. Generate JWT token (TODO: implement proper JWT)
-            var token = GenerateTemporaryToken(user.UserId, role);
+            var token = GenerateJwtToken(user.UserId, user.Email, role);
 
             // 6. Check if profile is completed
             bool profileCompleted = false;
@@ -184,7 +188,7 @@ namespace Axivora.Services
             // For now, accept any token (INSECURE - implement properly)
 
             // Update password
-            user.Password = HashPassword(newPassword);
+            user.PasswordHash = HashPassword(newPassword);
             user.UpdatedAt = DateTime.UtcNow;
             
             await _context.SaveChangesAsync();
@@ -223,17 +227,38 @@ namespace Axivora.Services
         }
 
         /// <summary>
-        /// Generate temporary token (TODO: Replace with JWT)
+        /// Generate JWT token
         /// </summary>
-        private string GenerateTemporaryToken(int userId, string role)
+        private string GenerateJwtToken(int userId, string email, string role)
         {
-            // TEMPORARY: Simple base64 token (INSECURE)
-            // TODO: Install Microsoft.AspNetCore.Authentication.JwtBearer
-            // and implement proper JWT token generation with secret key, expiration, etc.
-            
-            var tokenData = $"{userId}:{role}:{DateTime.UtcNow.Ticks}";
-            var bytes = Encoding.UTF8.GetBytes(tokenData);
-            return Convert.ToBase64String(bytes);
+            var jwtSettings = _configuration.GetSection("JwtSettings");
+            var secretKey = jwtSettings["SecretKey"];
+            var issuer = jwtSettings["Issuer"];
+            var audience = jwtSettings["Audience"];
+            var expiryMinutes = int.Parse(jwtSettings["ExpiryMinutes"] ?? "60");
+
+            var securityKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secretKey));
+            var credentials = new SigningCredentials(securityKey, SecurityAlgorithms.HmacSha256);
+
+            var claims = new[]
+            {
+                new Claim(ClaimTypes.NameIdentifier, userId.ToString()),
+                new Claim(ClaimTypes.Email, email),
+                new Claim(ClaimTypes.Role, role),
+                new Claim(JwtRegisteredClaimNames.Sub, userId.ToString()),
+                new Claim(JwtRegisteredClaimNames.Email, email),
+                new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
+            };
+
+            var token = new JwtSecurityToken(
+                issuer: issuer,
+                audience: audience,
+                claims: claims,
+                expires: DateTime.UtcNow.AddMinutes(expiryMinutes),
+                signingCredentials: credentials
+            );
+
+            return new JwtSecurityTokenHandler().WriteToken(token);
         }
 
         /// <summary>

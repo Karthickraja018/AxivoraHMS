@@ -5,23 +5,23 @@ namespace Axivora.Models
 {
     public class DoctorSchedule
     {
-        [Key]
         public int ScheduleId { get; set; }
 
-        [Required]
         public int DoctorId { get; set; }
 
+        [Range(0, 6, ErrorMessage = "Day of week must be between 0 (Sunday) and 6 (Saturday)")]
         public int DayOfWeek { get; set; }
 
-        [Required]
+        [Required(ErrorMessage = "Start time is required")]
         public TimeSpan StartTime { get; set; }
 
-        [Required]
+        [Required(ErrorMessage = "End time is required")]
         public TimeSpan EndTime { get; set; }
 
-        public int SlotDurationMinutes { get; set; } = 15;
+        [Range(5, 120, ErrorMessage = "Slot duration must be between 5 and 120 minutes")]
+        public int SlotDurationMinutes { get; set; }
 
-        public bool IsActive { get; set; } = true;
+        public bool IsActive { get; set; }
 
         // Navigation properties
         public Doctor? Doctor { get; set; }

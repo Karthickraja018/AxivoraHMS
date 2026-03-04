@@ -5,6 +5,7 @@ namespace Axivora.DTOs
     public class PatientDto
     {
         public int PatientId { get; set; }
+        public int UserId { get; set; }
         public string MRN { get; set; } = null!;
         public string FullName { get; set; } = null!;
         public DateOnly DateOfBirth { get; set; }

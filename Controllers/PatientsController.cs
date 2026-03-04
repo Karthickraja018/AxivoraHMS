@@ -1,11 +1,14 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using System.Security.Claims;
 using Axivora.DTOs;
+using Axivora.Models;
 using Axivora.Services.Interfaces;
 
 namespace Axivora.Controllers
 {
     [ApiController]
-    [Route("api/[controller]/[action]")]
+    [Route("api/[controller]")]
     public class PatientsController : ControllerBase
     {
         private readonly IPatientService _patientService;
@@ -16,59 +19,67 @@ namespace Axivora.Controllers
         }
 
         /// <summary>
-        /// Get all patients (Admin only)
+        /// Get all patients with pagination (Admin only)
         /// </summary>
         [HttpGet]
-        [ProducesResponseType(typeof(IEnumerable<PatientDto>), StatusCodes.Status200OK)]
-        public async Task<ActionResult<IEnumerable<PatientDto>>> GetAllPatients()
+        [Authorize(Roles = "Admin")]
+        [ProducesResponseType(typeof(PaginationResponse<PatientDto>), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
+        public async Task<ActionResult<PaginationResponse<PatientDto>>> GetAllPatients([FromQuery] PaginationParams paginationParams)
         {
-            var patients = await _patientService.GetAllPatientsAsync();
+            var patients = await _patientService.GetAllPatientsAsync(paginationParams);
             return Ok(patients);
         }
 
         /// <summary>
-        /// Get patient by ID
+        /// Get patient by ID (Admin, Doctor, or own profile)
         /// </summary>
         [HttpGet("{id}")]
+        [Authorize]
         [ProducesResponseType(typeof(PatientDto), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
         public async Task<ActionResult<PatientDto>> GetPatientById(int id)
         {
-            try
+            var patient = await _patientService.GetPatientByIdAsync(id);
+            
+            // Check if user is authorized to view this patient
+            var userId = int.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "0");
+            var userRole = User.FindFirst(ClaimTypes.Role)?.Value;
+            
+            if (userRole != "Admin" && userRole != "Doctor" && patient.UserId != userId)
             {
-                var patient = await _patientService.GetPatientByIdAsync(id);
-                return Ok(patient);
+                return Forbid();
             }
-            catch (KeyNotFoundException ex)
-            {
-                return NotFound(new { message = ex.Message });
-            }
+            
+            return Ok(patient);
         }
 
         /// <summary>
-        /// Get patient by Medical Record Number (MRN)
+        /// Get patient by Medical Record Number (MRN) (Admin and Doctor only)
         /// </summary>
         [HttpGet("mrn/{mrn}")]
+        [Authorize(Roles = "Admin,Doctor")]
         [ProducesResponseType(typeof(PatientDto), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
         public async Task<ActionResult<PatientDto>> GetPatientByMRN(string mrn)
         {
-            try
-            {
-                var patient = await _patientService.GetPatientByMRNAsync(mrn);
-                return Ok(patient);
-            }
-            catch (KeyNotFoundException ex)
-            {
-                return NotFound(new { message = ex.Message });
-            }
+            var patient = await _patientService.GetPatientByMRNAsync(mrn);
+            return Ok(patient);
         }
 
         /// <summary>
-        /// Search patients by name, MRN, or phone number
+        /// Search patients by name, MRN, or phone number (Admin and Doctor only)
         /// </summary>
         [HttpGet("search")]
+        [Authorize(Roles = "Admin,Doctor")]
         [ProducesResponseType(typeof(IEnumerable<PatientDto>), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
         public async Task<ActionResult<IEnumerable<PatientDto>>> SearchPatients([FromQuery] string searchTerm)
         {
             var patients = await _patientService.SearchPatientsAsync(searchTerm);
@@ -76,104 +87,114 @@ namespace Axivora.Controllers
         }
 
         /// <summary>
-        /// Complete patient profile after user registration (Authenticated)
-        /// TODO: Add [Authorize] attribute when JWT is implemented
+        /// Complete patient profile after user registration (Authenticated Patient only)
         /// </summary>
         [HttpPost("profile")]
+        [Authorize(Roles = "Patient")]
         [ProducesResponseType(typeof(PatientDto), StatusCodes.Status201Created)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         public async Task<ActionResult<PatientDto>> CompleteProfile([FromBody] CompletePatientProfileDto profileDto)
         {
-            // TODO: Get userId from JWT claims when authentication is implemented
-            // For now, accept userId in request (TEMPORARY - INSECURE)
-            // var userId = int.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "0");
-            
             if (!ModelState.IsValid)
                 return BadRequest(ModelState);
 
-            try
+            // Extract userId from JWT claims
+            var userId = int.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "0");
+            
+            if (userId == 0)
             {
-                // TEMPORARY: Get userId from header (remove when JWT is implemented)
-                if (!Request.Headers.TryGetValue("X-User-Id", out var userIdHeader) || 
-                    !int.TryParse(userIdHeader, out var userId))
-                {
-                    return BadRequest(new { message = "User ID required in X-User-Id header (temporary)" });
-                }
+                return Unauthorized(new { message = "Invalid token. User ID not found." });
+            }
 
-                var patient = await _patientService.CompleteProfileAsync(userId, profileDto);
-                return CreatedAtAction(nameof(GetPatientById), new { id = patient.PatientId }, patient);
-            }
-            catch (UnauthorizedAccessException ex)
-            {
-                return Unauthorized(new { message = ex.Message });
-            }
-            catch (InvalidOperationException ex)
-            {
-                return BadRequest(new { message = ex.Message });
-            }
+            var patient = await _patientService.CompleteProfileAsync(userId, profileDto);
+            return CreatedAtAction(nameof(GetPatientById), new { id = patient.PatientId }, patient);
         }
 
         /// <summary>
         /// Create patient with user account (Admin only)
         /// </summary>
-        [HttpPost("admin")]
+        [HttpPost]
+        [Authorize(Roles = "Admin")]
         [ProducesResponseType(typeof(PatientDto), StatusCodes.Status201Created)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
         public async Task<ActionResult<PatientDto>> CreatePatient([FromBody] CreatePatientDto createPatientDto)
         {
             if (!ModelState.IsValid)
                 return BadRequest(ModelState);
 
-            try
-            {
-                var patient = await _patientService.CreatePatientAsync(createPatientDto);
-                return CreatedAtAction(nameof(GetPatientById), new { id = patient.PatientId }, patient);
-            }
-            catch (InvalidOperationException ex)
-            {
-                return BadRequest(new { message = ex.Message });
-            }
+            var patient = await _patientService.CreatePatientAsync(createPatientDto);
+            return CreatedAtAction(nameof(GetPatientById), new { id = patient.PatientId }, patient);
         }
 
         /// <summary>
-        /// Update patient information
+        /// Update patient information (Admin, Doctor, or own profile)
         /// </summary>
         [HttpPut("{id}")]
+        [Authorize]
         [ProducesResponseType(typeof(PatientDto), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
         public async Task<ActionResult<PatientDto>> UpdatePatient(int id, [FromBody] UpdatePatientDto updatePatientDto)
         {
             if (!ModelState.IsValid)
                 return BadRequest(ModelState);
 
-            try
+            // Get patient to check ownership
+            var existingPatient = await _patientService.GetPatientByIdAsync(id);
+            
+            // Check if user is authorized to update this patient
+            var userId = int.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "0");
+            var userRole = User.FindFirst(ClaimTypes.Role)?.Value;
+            
+            if (userRole != "Admin" && existingPatient.UserId != userId)
             {
-                var patient = await _patientService.UpdatePatientAsync(id, updatePatientDto);
-                return Ok(patient);
+                return Forbid();
             }
-            catch (KeyNotFoundException ex)
-            {
-                return NotFound(new { message = ex.Message });
-            }
+
+            var patient = await _patientService.UpdatePatientAsync(id, updatePatientDto);
+            return Ok(patient);
         }
 
         /// <summary>
-        /// Soft delete patient
+        /// Soft delete patient (Admin only)
         /// </summary>
         [HttpDelete("{id}")]
+        [Authorize(Roles = "Admin")]
         [ProducesResponseType(StatusCodes.Status204NoContent)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
         public async Task<ActionResult> DeletePatient(int id)
         {
-            try
+            await _patientService.DeletePatientAsync(id);
+            return NoContent();
+        }
+
+        /// <summary>
+        /// Get current user's patient profile
+        /// </summary>
+        [HttpGet("me")]
+        [Authorize(Roles = "Patient")]
+        [ProducesResponseType(typeof(PatientDto), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        public async Task<ActionResult<PatientDto>> GetMyProfile()
+        {
+            var userId = int.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "0");
+            
+            var patients = await _patientService.GetAllPatientsAsync();
+            var patient = patients.FirstOrDefault(p => p.UserId == userId);
+            
+            if (patient == null)
             {
-                await _patientService.DeletePatientAsync(id);
-                return NoContent();
+                return NotFound(new { message = "Patient profile not found. Please complete your profile." });
             }
-            catch (KeyNotFoundException ex)
-            {
-                return NotFound(new { message = ex.Message });
-            }
+            
+            return Ok(patient);
         }
     }
 }

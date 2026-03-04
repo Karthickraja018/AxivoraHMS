@@ -29,6 +29,29 @@ namespace Axivora.Services
             return _mapper.Map<IEnumerable<PatientDto>>(patients);
         }
 
+        public async Task<PaginationResponse<PatientDto>> GetAllPatientsAsync(PaginationParams paginationParams)
+        {
+            var query = _context.Patients
+                .Include(p => p.Address)
+                .Include(p => p.PatientAllergies)
+                .Where(p => !p.IsDeleted);
+
+            var totalCount = await query.CountAsync();
+
+            var patients = await query
+                .Skip((paginationParams.PageNumber - 1) * paginationParams.PageSize)
+                .Take(paginationParams.PageSize)
+                .ToListAsync();
+
+            var patientDtos = _mapper.Map<IEnumerable<PatientDto>>(patients);
+
+            return new PaginationResponse<PatientDto>(
+                patientDtos,
+                totalCount,
+                paginationParams.PageNumber,
+                paginationParams.PageSize);
+        }
+
         public async Task<PatientDto> GetPatientByIdAsync(int patientId)
         {
             var patient = await _context.Patients
@@ -143,7 +166,7 @@ namespace Axivora.Services
                 var user = new User
                 {
                     Email = createPatientDto.Email,
-                    Password = createPatientDto.Password, // TODO: Hash password with BCrypt
+                    PasswordHash = createPatientDto.Password, // TODO: Hash password with BCrypt
                     IsActive = true,
                     IsDeleted = false,
                     CreatedAt = DateTime.UtcNow,

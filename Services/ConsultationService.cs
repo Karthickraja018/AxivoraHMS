@@ -31,6 +31,32 @@ namespace Axivora.Services
             return _mapper.Map<IEnumerable<ConsultationDto>>(consultations);
         }
 
+        public async Task<PaginationResponse<ConsultationDto>> GetAllConsultationsAsync(PaginationParams paginationParams)
+        {
+            var query = _context.Consultations
+                .Include(c => c.ICDCode)
+                .Include(c => c.Prescriptions)
+                    .ThenInclude(p => p.Medicine)
+                .Include(c => c.OrderedTests)
+                    .ThenInclude(ot => ot.LabTest);
+
+            var totalCount = await query.CountAsync();
+
+            var consultations = await query
+                .OrderByDescending(c => c.CreatedAt)
+                .Skip((paginationParams.PageNumber - 1) * paginationParams.PageSize)
+                .Take(paginationParams.PageSize)
+                .ToListAsync();
+
+            var consultationDtos = _mapper.Map<IEnumerable<ConsultationDto>>(consultations);
+
+            return new PaginationResponse<ConsultationDto>(
+                consultationDtos,
+                totalCount,
+                paginationParams.PageNumber,
+                paginationParams.PageSize);
+        }
+
         public async Task<ConsultationDto> GetConsultationByIdAsync(int consultationId)
         {
             var consultation = await _context.Consultations

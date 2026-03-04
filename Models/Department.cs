@@ -5,11 +5,9 @@ namespace Axivora.Models
 {
     public class Department
     {
-        [Key]
         public int DepartmentId { get; set; }
 
-        [Required]
-        [StringLength(100)]
+        [Required(ErrorMessage = "Department name is required")]
         public string DepartmentName { get; set; } = null!;
 
         // Navigation properties

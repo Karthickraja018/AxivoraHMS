@@ -1,10 +1,12 @@
 using Axivora.DTOs;
+using Axivora.Models;
 
 namespace Axivora.Services.Interfaces
 {
     public interface IAppointmentService
     {
         Task<IEnumerable<AppointmentDto>> GetAllAppointmentsAsync();
+        Task<PaginationResponse<AppointmentDto>> GetAllAppointmentsAsync(PaginationParams paginationParams);
         Task<AppointmentDto> GetAppointmentByIdAsync(int appointmentId);
         Task<IEnumerable<AppointmentDto>> GetAppointmentsByPatientIdAsync(int patientId);
         Task<IEnumerable<AppointmentDto>> GetAppointmentsByDoctorIdAsync(int doctorId);

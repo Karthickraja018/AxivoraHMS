@@ -5,11 +5,9 @@ namespace Axivora.Models
 {
     public class Medicine
     {
-        [Key]
         public int MedicineId { get; set; }
 
-        [Required]
-        [StringLength(150)]
+        [Required(ErrorMessage = "Medicine name is required")]
         public string MedicineName { get; set; } = null!;
 
         // Navigation properties

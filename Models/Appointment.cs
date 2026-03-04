@@ -5,30 +5,27 @@ namespace Axivora.Models
 {
     public class Appointment
     {
-        [Key]
         public int AppointmentId { get; set; }
 
-        [Required]
         public int PatientId { get; set; }
 
-        [Required]
         public int DoctorId { get; set; }
 
-        [Required]
         public int StatusId { get; set; }
 
-        [Required]
+        [Required(ErrorMessage = "Appointment start time is required")]
+        [DataType(DataType.DateTime)]
         public DateTime AppointmentStart { get; set; }
 
-        [Required]
+        [Required(ErrorMessage = "Appointment end time is required")]
+        [DataType(DataType.DateTime)]
         public DateTime AppointmentEnd { get; set; }
 
-        [StringLength(500)]
         public string? Reason { get; set; }
 
-        public bool IsDeleted { get; set; } = false;
+        public bool IsDeleted { get; set; }
 
-        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+        public DateTime CreatedAt { get; set; }
 
         // Navigation properties
         public Patient? Patient { get; set; }

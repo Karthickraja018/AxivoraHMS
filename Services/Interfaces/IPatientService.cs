@@ -1,10 +1,12 @@
 using Axivora.DTOs;
+using Axivora.Models;
 
 namespace Axivora.Services.Interfaces
 {
     public interface IPatientService
     {
         Task<IEnumerable<PatientDto>> GetAllPatientsAsync();
+        Task<PaginationResponse<PatientDto>> GetAllPatientsAsync(PaginationParams paginationParams);
         Task<PatientDto> GetPatientByIdAsync(int patientId);
         Task<PatientDto> GetPatientByMRNAsync(string mrn);
         Task<PatientDto> GetPatientByUserIdAsync(int userId);

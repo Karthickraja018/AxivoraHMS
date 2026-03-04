@@ -30,6 +30,31 @@ namespace Axivora.Services
             return _mapper.Map<IEnumerable<AppointmentDto>>(appointments);
         }
 
+        public async Task<PaginationResponse<AppointmentDto>> GetAllAppointmentsAsync(PaginationParams paginationParams)
+        {
+            var query = _context.Appointments
+                .Include(a => a.Patient)
+                .Include(a => a.Doctor)
+                .Include(a => a.Status)
+                .Where(a => !a.IsDeleted);
+
+            var totalCount = await query.CountAsync();
+
+            var appointments = await query
+                .OrderByDescending(a => a.AppointmentStart)
+                .Skip((paginationParams.PageNumber - 1) * paginationParams.PageSize)
+                .Take(paginationParams.PageSize)
+                .ToListAsync();
+
+            var appointmentDtos = _mapper.Map<IEnumerable<AppointmentDto>>(appointments);
+
+            return new PaginationResponse<AppointmentDto>(
+                appointmentDtos,
+                totalCount,
+                paginationParams.PageNumber,
+                paginationParams.PageSize);
+        }
+
         public async Task<AppointmentDto> GetAppointmentByIdAsync(int appointmentId)
         {
             var appointment = await _context.Appointments

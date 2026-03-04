@@ -6,32 +6,28 @@ namespace Axivora.Models
 {
     public class Doctor
     {
-        [Key]
         public int DoctorId { get; set; }
 
-        [Required]
         public int UserId { get; set; }
 
-        [Required]
-        [StringLength(100)]
+        [Required(ErrorMessage = "License number is required")]
         public string LicenseNumber { get; set; } = null!;
 
-        [Required]
-        [StringLength(150)]
+        [Required(ErrorMessage = "Full name is required")]
         public string FullName { get; set; } = null!;
 
-        [StringLength(150)]
         public string? Qualification { get; set; }
 
+        [Range(0, 100, ErrorMessage = "Experience years must be between 0 and 100")]
         public int? ExperienceYears { get; set; }
 
         public int? AddressId { get; set; }
 
-        public bool IsActive { get; set; } = true;
+        public bool IsActive { get; set; }
 
-        public bool IsDeleted { get; set; } = false;
+        public bool IsDeleted { get; set; }
 
-        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+        public DateTime CreatedAt { get; set; }
 
         // Navigation properties
         public User? User { get; set; }

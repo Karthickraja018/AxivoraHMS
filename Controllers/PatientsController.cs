@@ -87,14 +87,40 @@ namespace Axivora.Controllers
         }
 
         /// <summary>
-        /// Complete patient profile after user registration (Authenticated Patient only)
+        /// Get current user's patient profile
         /// </summary>
-        [HttpPost("profile")]
+        [HttpGet("me")]
+        [Authorize(Roles = "Patient")]
+        [ProducesResponseType(typeof(PatientDto), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        public async Task<ActionResult<PatientDto>> GetMyProfile()
+        {
+            var userId = int.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "0");
+            
+            var patients = await _patientService.GetAllPatientsAsync();
+            var patient = patients.FirstOrDefault(p => p.UserId == userId);
+            
+            if (patient == null)
+            {
+                return NotFound(new { message = "Patient profile not found. Please complete your profile using POST /api/patients/me." });
+            }
+            
+            return Ok(patient);
+        }
+
+        /// <summary>
+        /// Create or update current user's patient profile (Authenticated Patient only)
+        /// First-time: Creates new patient profile
+        /// Subsequent: Updates existing profile if soft-deleted, otherwise returns error
+        /// </summary>
+        [HttpPost("me")]
         [Authorize(Roles = "Patient")]
         [ProducesResponseType(typeof(PatientDto), StatusCodes.Status201Created)]
+        [ProducesResponseType(typeof(PatientDto), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-        public async Task<ActionResult<PatientDto>> CompleteProfile([FromBody] CompletePatientProfileDto profileDto)
+        public async Task<ActionResult<PatientDto>> CreateOrUpdateMyProfile([FromBody] CompletePatientProfileDto profileDto)
         {
             if (!ModelState.IsValid)
                 return BadRequest(ModelState);
@@ -108,7 +134,10 @@ namespace Axivora.Controllers
             }
 
             var patient = await _patientService.CompleteProfileAsync(userId, profileDto);
-            return CreatedAtAction(nameof(GetPatientById), new { id = patient.PatientId }, patient);
+            
+            // Return 201 Created for new profiles, but since we can't easily detect if it was created or restored,
+            // we'll use CreatedAtAction for consistency
+            return CreatedAtAction(nameof(GetMyProfile), patient);
         }
 
         /// <summary>
@@ -172,29 +201,6 @@ namespace Axivora.Controllers
         {
             await _patientService.DeletePatientAsync(id);
             return NoContent();
-        }
-
-        /// <summary>
-        /// Get current user's patient profile
-        /// </summary>
-        [HttpGet("me")]
-        [Authorize(Roles = "Patient")]
-        [ProducesResponseType(typeof(PatientDto), StatusCodes.Status200OK)]
-        [ProducesResponseType(StatusCodes.Status404NotFound)]
-        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-        public async Task<ActionResult<PatientDto>> GetMyProfile()
-        {
-            var userId = int.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "0");
-            
-            var patients = await _patientService.GetAllPatientsAsync();
-            var patient = patients.FirstOrDefault(p => p.UserId == userId);
-            
-            if (patient == null)
-            {
-                return NotFound(new { message = "Patient profile not found. Please complete your profile." });
-            }
-            
-            return Ok(patient);
         }
     }
 }

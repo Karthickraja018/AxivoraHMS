@@ -16,7 +16,8 @@ namespace Axivora.Controllers
         }
 
         /// <summary>
-        /// Register a new user (Patient or Doctor)
+        /// Register a new Patient user (self-registration)
+        /// Doctors and Admins must be created by administrators through admin endpoints
         /// </summary>
         [HttpPost("register")]
         [ProducesResponseType(typeof(AuthResponseDto), StatusCodes.Status201Created)]

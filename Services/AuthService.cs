@@ -29,9 +29,10 @@ namespace Axivora.Services
             if (await _context.Users.AnyAsync(u => u.Email == registerDto.Email))
                 throw new InvalidOperationException("Email already registered.");
 
-            // 2. Validate role
-            if (registerDto.Role != "Patient" && registerDto.Role != "Doctor" && registerDto.Role != "Admin")
-                throw new InvalidOperationException("Invalid role. Must be 'Patient', 'Doctor', or 'Admin'.");
+            // 2. Validate role - Only allow Patient self-registration
+            // Admin and Doctor roles should be created through admin endpoints
+            if (registerDto.Role != "Patient")
+                throw new InvalidOperationException("Self-registration is only allowed for Patient role. Admins and Doctors must be created by system administrators.");
 
             // 3. Create user
             var user = new User

@@ -20,7 +20,7 @@ namespace Axivora.DTOs
         public string ConfirmPassword { get; set; } = null!;
 
         [Required]
-        public string Role { get; set; } = "Patient"; // "Patient" or "Doctor"
+        public string Role { get; set; } = "Patient"; // Only "Patient" allowed for self-registration
     }
 
     public class LoginDto

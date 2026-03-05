@@ -101,30 +101,95 @@ namespace Axivora.Services
             if (user == null || user.IsDeleted || !user.IsActive)
                 throw new UnauthorizedAccessException("Invalid user.");
 
-            // Check if profile already exists
+            // Check if profile already exists (including soft-deleted ones)
             var existingPatient = await _context.Patients
+                .IgnoreQueryFilters() // Important: Check ALL patients including soft-deleted
                 .FirstOrDefaultAsync(p => p.UserId == userId);
 
             if (existingPatient != null)
-                throw new InvalidOperationException("Patient profile already exists.");
+            {
+                // If patient exists and is soft-deleted, restore and update it
+                if (existingPatient.IsDeleted)
+                {
+                    using var transaction = await _context.Database.BeginTransactionAsync();
+                    
+                    try
+                    {
+                        // Update or create address
+                        Address address;
+                        if (existingPatient.AddressId > 0)
+                        {
+                            address = await _context.Addresses.FindAsync(existingPatient.AddressId);
+                            if (address != null)
+                            {
+                                _mapper.Map(profileDto.Address, address);
+                            }
+                            else
+                            {
+                                address = _mapper.Map<Address>(profileDto.Address);
+                                address.CreatedAt = DateTime.UtcNow;
+                                _context.Addresses.Add(address);
+                                await _context.SaveChangesAsync();
+                                existingPatient.AddressId = address.AddressId;
+                            }
+                        }
+                        else
+                        {
+                            address = _mapper.Map<Address>(profileDto.Address);
+                            address.CreatedAt = DateTime.UtcNow;
+                            _context.Addresses.Add(address);
+                            await _context.SaveChangesAsync();
+                            existingPatient.AddressId = address.AddressId;
+                        }
 
-            using var transaction = await _context.Database.BeginTransactionAsync();
+                        // Restore and update patient
+                        existingPatient.FullName = profileDto.FullName;
+                        existingPatient.DateOfBirth = profileDto.DateOfBirth;
+                        existingPatient.Gender = profileDto.Gender;
+                        existingPatient.PhoneNumber = profileDto.PhoneNumber;
+                        existingPatient.BloodGroup = profileDto.BloodGroup;
+                        existingPatient.EmergencyContact = profileDto.EmergencyContact;
+                        existingPatient.IsDeleted = false;
+                        existingPatient.CreatedAt = DateTime.UtcNow;
+                        
+                        _context.Patients.Update(existingPatient);
+                        await _context.SaveChangesAsync();
+                        
+                        await transaction.CommitAsync();
+                        
+                        return await GetPatientByIdAsync(existingPatient.PatientId);
+                    }
+                    catch
+                    {
+                        await transaction.RollbackAsync();
+                        throw;
+                    }
+                }
+                else
+                {
+                    // Patient already exists and is active - cannot complete profile again
+                    throw new InvalidOperationException("Patient profile already exists and is active. Use the update endpoint to modify your profile.");
+                }
+            }
+
+            // No existing patient found - create new one
+            using var newTransaction = await _context.Database.BeginTransactionAsync();
 
             try
             {
                 // Create Address
-                var address = _mapper.Map<Address>(profileDto.Address);
-                address.CreatedAt = DateTime.UtcNow;
+                var newAddress = _mapper.Map<Address>(profileDto.Address);
+                newAddress.CreatedAt = DateTime.UtcNow;
 
-                _context.Addresses.Add(address);
+                _context.Addresses.Add(newAddress);
                 await _context.SaveChangesAsync();
 
-                // Create Patient
+                // Create Patient with temporary unique MRN to avoid unique constraint collision
                 var patient = new Patient
                 {
                     UserId = userId,
-                    AddressId = address.AddressId,
-                    MRN = await GenerateMRNAsync(),
+                    AddressId = newAddress.AddressId,
+                    MRN = Guid.NewGuid().ToString(), // temporary unique value
                     FullName = profileDto.FullName,
                     DateOfBirth = profileDto.DateOfBirth,
                     Gender = profileDto.Gender,
@@ -138,13 +203,18 @@ namespace Axivora.Services
                 _context.Patients.Add(patient);
                 await _context.SaveChangesAsync();
 
-                await transaction.CommitAsync();
+                // Now that PatientId is generated, create the final MRN based on the persisted id
+                patient.MRN = GenerateMRNFromId(patient.PatientId);
+                _context.Patients.Update(patient);
+                await _context.SaveChangesAsync();
+
+                await newTransaction.CommitAsync();
 
                 return await GetPatientByIdAsync(patient.PatientId);
             }
             catch
             {
-                await transaction.RollbackAsync();
+                await newTransaction.RollbackAsync();
                 throw;
             }
         }
@@ -183,12 +253,12 @@ namespace Axivora.Services
                 _context.Addresses.Add(address);
                 await _context.SaveChangesAsync();
 
-                // 4. Create Patient
+                // 4. Create Patient with temporary MRN
                 var patient = new Patient
                 {
                     UserId = user.UserId,
                     AddressId = address.AddressId,
-                    MRN = await GenerateMRNAsync(),
+                    MRN = Guid.NewGuid().ToString(), // temporary unique value
                     FullName = createPatientDto.FullName,
                     DateOfBirth = createPatientDto.DateOfBirth,
                     Gender = createPatientDto.Gender,
@@ -200,6 +270,11 @@ namespace Axivora.Services
                 };
 
                 _context.Patients.Add(patient);
+                await _context.SaveChangesAsync();
+
+                // Set final MRN using the generated PatientId
+                patient.MRN = GenerateMRNFromId(patient.PatientId);
+                _context.Patients.Update(patient);
                 await _context.SaveChangesAsync();
 
                 await transaction.CommitAsync();
@@ -243,16 +318,26 @@ namespace Axivora.Services
 
         public async Task<IEnumerable<PatientDto>> SearchPatientsAsync(string searchTerm)
         {
+            if (string.IsNullOrWhiteSpace(searchTerm))
+                return new List<PatientDto>();
+
+            var normalizedSearchTerm = searchTerm.Trim().ToLower();
+
             var patients = await _context.Patients
                 .Include(p => p.Address)
                 .Include(p => p.PatientAllergies)
                 .Where(p => !p.IsDeleted && 
-                    (p.FullName.Contains(searchTerm) || 
-                     p.MRN.Contains(searchTerm) ||
+                    (p.FullName.ToLower().Contains(normalizedSearchTerm) || 
+                     p.MRN.ToLower().Contains(normalizedSearchTerm) ||
                      (p.PhoneNumber != null && p.PhoneNumber.Contains(searchTerm))))
                 .ToListAsync();
 
             return _mapper.Map<IEnumerable<PatientDto>>(patients);
+        }
+
+        private string GenerateMRNFromId(int patientId)
+        {
+            return $"MRN{DateTime.UtcNow:yyyyMMdd}{patientId:D6}";
         }
 
         private async Task<string> GenerateMRNAsync()

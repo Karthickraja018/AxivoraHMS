@@ -4,6 +4,8 @@ using Axivora.Data;
 using Axivora.DTOs;
 using Axivora.Models;
 using Axivora.Services.Interfaces;
+using System.Security.Cryptography;
+using System.Text;
 
 namespace Axivora.Services
 {
@@ -69,18 +71,103 @@ namespace Axivora.Services
             return _mapper.Map<DoctorDto>(doctor);
         }
 
+        /// <summary>
+        /// Admin use only - creates user account and doctor profile in one transaction
+        /// </summary>
         public async Task<DoctorDto> CreateDoctorAsync(CreateDoctorDto createDoctorDto)
         {
-            var doctor = _mapper.Map<Doctor>(createDoctorDto);
-            doctor.CreatedAt = DateTime.UtcNow;
-            doctor.IsDeleted = false;
-            doctor.IsActive = true;
+            using var transaction = await _context.Database.BeginTransactionAsync();
 
-            _context.Doctors.Add(doctor);
-            await _context.SaveChangesAsync();
-
-            if (createDoctorDto.DepartmentIds != null && createDoctorDto.DepartmentIds.Any())
+            try
             {
+                // 1. Check if email already exists
+                if (await _context.Users.AnyAsync(u => u.Email == createDoctorDto.Email))
+                    throw new InvalidOperationException($"User with email {createDoctorDto.Email} already exists.");
+
+                // 2. Check if license number already exists
+                if (await _context.Doctors.IgnoreQueryFilters().AnyAsync(d => d.LicenseNumber == createDoctorDto.LicenseNumber))
+                    throw new InvalidOperationException($"Doctor with license number {createDoctorDto.LicenseNumber} already exists.");
+
+                // 3. Validate departments exist
+                if (createDoctorDto.DepartmentIds == null || !createDoctorDto.DepartmentIds.Any())
+                    throw new InvalidOperationException("At least one department must be specified.");
+
+                var departmentCount = await _context.Departments
+                    .Where(d => createDoctorDto.DepartmentIds.Contains(d.DepartmentId))
+                    .CountAsync();
+
+                if (departmentCount != createDoctorDto.DepartmentIds.Count)
+                    throw new InvalidOperationException("One or more specified departments do not exist.");
+
+                // 4. Create User account
+                var user = new User
+                {
+                    Email = createDoctorDto.Email,
+                    PasswordHash = /* hash password using SHA256 to match AuthService */ null!,
+                    IsActive = true,
+                    IsDeleted = false,
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow
+                };
+
+                // Hash password (temporary SHA256, consistent with AuthService.HashPassword)
+                using (var sha256 = SHA256.Create())
+                {
+                    var pwdBytes = Encoding.UTF8.GetBytes(createDoctorDto.Password);
+                    var pwdHash = sha256.ComputeHash(pwdBytes);
+                    user.PasswordHash = Convert.ToBase64String(pwdHash);
+                }
+
+                _context.Users.Add(user);
+                await _context.SaveChangesAsync();
+
+                // 5. Create Doctor role if not exists and assign to user
+                var doctorRole = await _context.Roles.FirstOrDefaultAsync(r => r.RoleName == "Doctor");
+                if (doctorRole == null)
+                {
+                    doctorRole = new Role { RoleName = "Doctor" };
+                    _context.Roles.Add(doctorRole);
+                    await _context.SaveChangesAsync();
+                }
+
+                var userRole = new UserRole
+                {
+                    UserId = user.UserId,
+                    RoleId = doctorRole.RoleId
+                };
+                _context.UserRoles.Add(userRole);
+                await _context.SaveChangesAsync();
+
+                // 6. Create Address if provided
+                int? addressId = null;
+                if (createDoctorDto.Address != null)
+                {
+                    var address = _mapper.Map<Address>(createDoctorDto.Address);
+                    address.CreatedAt = DateTime.UtcNow;
+
+                    _context.Addresses.Add(address);
+                    await _context.SaveChangesAsync();
+                    addressId = address.AddressId;
+                }
+
+                // 7. Create Doctor profile
+                var doctor = new Doctor
+                {
+                    UserId = user.UserId,
+                    LicenseNumber = createDoctorDto.LicenseNumber,
+                    FullName = createDoctorDto.FullName,
+                    Qualification = createDoctorDto.Qualification,
+                    ExperienceYears = createDoctorDto.ExperienceYears,
+                    AddressId = addressId,
+                    IsActive = true,
+                    IsDeleted = false,
+                    CreatedAt = DateTime.UtcNow
+                };
+
+                _context.Doctors.Add(doctor);
+                await _context.SaveChangesAsync();
+
+                // 8. Assign doctor to departments
                 foreach (var departmentId in createDoctorDto.DepartmentIds)
                 {
                     _context.DoctorDepartments.Add(new DoctorDepartment
@@ -90,9 +177,16 @@ namespace Axivora.Services
                     });
                 }
                 await _context.SaveChangesAsync();
-            }
 
-            return await GetDoctorByIdAsync(doctor.DoctorId);
+                await transaction.CommitAsync();
+
+                return await GetDoctorByIdAsync(doctor.DoctorId);
+            }
+            catch
+            {
+                await transaction.RollbackAsync();
+                throw;
+            }
         }
 
         public async Task<DoctorDto> UpdateDoctorAsync(int doctorId, UpdateDoctorDto updateDoctorDto)

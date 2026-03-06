@@ -7,6 +7,7 @@ using Axivora.Middleware;
 using Axivora.Services;
 using Axivora.Services.Interfaces;
 using Axivora.Mappings;
+using Axivora.Security;
 
 namespace Axivora
 {
@@ -57,6 +58,9 @@ namespace Axivora
             builder.Services.AddScoped<IDoctorService, DoctorService>();
             builder.Services.AddScoped<IAppointmentService, AppointmentService>();
             builder.Services.AddScoped<IConsultationService, ConsultationService>();
+
+            // Register token service
+            builder.Services.AddScoped<ITokenService, TokenService>();
 
             // Add Swagger/OpenAPI
             builder.Services.AddEndpointsApiExplorer();

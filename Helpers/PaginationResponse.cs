@@ -1,4 +1,4 @@
-namespace Axivora.Models
+namespace Axivora.Helpers
 {
     public class PaginationResponse<T>
     {

@@ -2,7 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
 using Axivora.DTOs;
-using Axivora.Models;
+using Axivora.Helpers;
 using Axivora.Services.Interfaces;
 
 namespace Axivora.Controllers

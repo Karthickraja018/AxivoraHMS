@@ -97,16 +97,16 @@ namespace Axivora.Controllers
         public async Task<ActionResult<PatientDto>> GetMyProfile()
         {
             var userId = int.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "0");
-            
-            var patients = await _patientService.GetAllPatientsAsync();
-            var patient = patients.FirstOrDefault(p => p.UserId == userId);
-            
-            if (patient == null)
+
+            try
+            {
+                var patient = await _patientService.GetPatientByUserIdAsync(userId);
+                return Ok(patient);
+            }
+            catch (KeyNotFoundException)
             {
                 return NotFound(new { message = "Patient profile not found. Please complete your profile using POST /api/patients/me." });
             }
-            
-            return Ok(patient);
         }
 
         /// <summary>

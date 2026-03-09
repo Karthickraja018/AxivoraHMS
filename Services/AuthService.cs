@@ -1,7 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using System.Security.Cryptography;
-using System.Text;
 using Axivora.Data;
 using Axivora.DTOs;
 using Axivora.Models;
@@ -15,12 +14,18 @@ namespace Axivora.Services
         private readonly AxivoraDbContext _context;
         private readonly IConfiguration _configuration;
         private readonly ITokenService _tokenService;
+        private readonly IPasswordHasher _passwordHasher;
 
-        public AuthService(AxivoraDbContext context, IConfiguration configuration, ITokenService tokenService)
+        public AuthService(
+            AxivoraDbContext context,
+            IConfiguration configuration,
+            ITokenService tokenService,
+            IPasswordHasher passwordHasher)
         {
             _context = context;
             _configuration = configuration;
             _tokenService = tokenService;
+            _passwordHasher = passwordHasher;
         }
 
         public async Task<AuthResponseDto> RegisterAsync(RegisterUserDto registerDto)
@@ -38,7 +43,7 @@ namespace Axivora.Services
             var user = new User
             {
                 Email = registerDto.Email,
-                PasswordHash = HashPassword(registerDto.Password), // Hash password
+                PasswordHash = _passwordHasher.Hash(registerDto.Password), // Hash password
                 IsActive = true,
                 IsDeleted = false,
                 CreatedAt = DateTime.UtcNow,
@@ -58,13 +63,7 @@ namespace Axivora.Services
                 await _context.SaveChangesAsync();
             }
 
-            var userRole = new UserRole
-            {
-                UserId = user.UserId,
-                RoleId = role.RoleId
-            };
-
-            _context.UserRoles.Add(userRole);
+            _context.UserRoles.Add(new UserRole { UserId = user.UserId, RoleId = role.RoleId });
             await _context.SaveChangesAsync();
 
             // 5. TODO: Send verification email
@@ -74,15 +73,9 @@ namespace Axivora.Services
             var token = _tokenService.GenerateJwtToken(user.UserId, user.Email, registerDto.Role);
 
             // 7. Check if profile is completed
-            bool profileCompleted = false;
-            if (registerDto.Role == "Patient")
-            {
-                profileCompleted = await _context.Patients.AnyAsync(p => p.UserId == user.UserId);
-            }
-            else if (registerDto.Role == "Doctor")
-            {
-                profileCompleted = await _context.Doctors.AnyAsync(d => d.UserId == user.UserId);
-            }
+            bool profileCompleted = registerDto.Role == "Patient"
+                ? await _context.Patients.AnyAsync(p => p.UserId == user.UserId)
+                : registerDto.Role == "Doctor" && await _context.Doctors.AnyAsync(d => d.UserId == user.UserId);
 
             return new AuthResponseDto
             {
@@ -107,7 +100,7 @@ namespace Axivora.Services
                 throw new UnauthorizedAccessException("Invalid email or password.");
 
             // 2. Verify password
-            if (!VerifyPassword(loginDto.Password, user.PasswordHash))
+            if (!_passwordHasher.Verify(loginDto.Password, user.PasswordHash))
                 throw new UnauthorizedAccessException("Invalid email or password.");
 
             // 3. Check if user is active
@@ -115,22 +108,15 @@ namespace Axivora.Services
                 throw new UnauthorizedAccessException("Account is disabled. Please contact support.");
 
             // 4. Get user role
-            var userRole = user.UserRoles.FirstOrDefault();
-            var role = userRole?.Role?.RoleName ?? "Patient";
+            var roleName = user.UserRoles.FirstOrDefault()?.Role?.RoleName ?? "Patient";
 
             // 5. Generate JWT token using token service
-            var token = _tokenService.GenerateJwtToken(user.UserId, user.Email, role);
+            var token = _tokenService.GenerateJwtToken(user.UserId, user.Email, roleName);
 
             // 6. Check if profile is completed
-            bool profileCompleted = false;
-            if (role == "Patient")
-            {
-                profileCompleted = await _context.Patients.AnyAsync(p => p.UserId == user.UserId);
-            }
-            else if (role == "Doctor")
-            {
-                profileCompleted = await _context.Doctors.AnyAsync(d => d.UserId == user.UserId);
-            }
+            bool profileCompleted = roleName == "Patient"
+                ? await _context.Patients.AnyAsync(p => p.UserId == user.UserId)
+                : roleName == "Doctor" && await _context.Doctors.AnyAsync(d => d.UserId == user.UserId);
 
             // 7. Update last login (optional)
             user.UpdatedAt = DateTime.UtcNow;
@@ -141,7 +127,7 @@ namespace Axivora.Services
                 UserId = user.UserId,
                 Email = user.Email,
                 Token = token,
-                Role = role,
+                Role = roleName,
                 EmailVerified = true, // TODO: implement email verification
                 ProfileCompleted = profileCompleted
             };
@@ -163,7 +149,7 @@ namespace Axivora.Services
             if (user == null)
                 throw new KeyNotFoundException("User not found.");
 
-            var resetToken = GenerateResetToken();
+            var resetToken = GenerateSecureToken();
             Console.WriteLine($"Password reset token for {email}: {resetToken}");
         }
 
@@ -174,38 +160,19 @@ namespace Axivora.Services
                 throw new KeyNotFoundException("User not found.");
 
             // Update password
-            user.PasswordHash = HashPassword(newPassword);
+            user.PasswordHash = _passwordHasher.Hash(newPassword);
             user.UpdatedAt = DateTime.UtcNow;
-
             await _context.SaveChangesAsync();
 
             return true;
         }
 
-        #region Helper Methods
-
-        private string HashPassword(string password)
-        {
-            using var sha256 = SHA256.Create();
-            var bytes = Encoding.UTF8.GetBytes(password);
-            var hash = sha256.ComputeHash(bytes);
-            return Convert.ToBase64String(hash);
-        }
-
-        private bool VerifyPassword(string password, string passwordHash)
-        {
-            var hashOfInput = HashPassword(password);
-            return hashOfInput == passwordHash;
-        }
-
-        private string GenerateResetToken()
+        private static string GenerateSecureToken()
         {
             var randomBytes = new byte[32];
             using var rng = RandomNumberGenerator.Create();
             rng.GetBytes(randomBytes);
             return Convert.ToBase64String(randomBytes);
         }
-
-        #endregion
     }
 }

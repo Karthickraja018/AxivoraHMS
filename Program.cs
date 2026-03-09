@@ -58,9 +58,14 @@ namespace Axivora
             builder.Services.AddScoped<IDoctorService, DoctorService>();
             builder.Services.AddScoped<IAppointmentService, AppointmentService>();
             builder.Services.AddScoped<IConsultationService, ConsultationService>();
+            builder.Services.AddScoped<ILabTestService, LabTestService>();
+            builder.Services.AddScoped<IDoctorScheduleService, DoctorScheduleService>();
+            builder.Services.AddScoped<IMedicalHistoryService, MedicalHistoryService>();
 
             // Register token service
             builder.Services.AddScoped<ITokenService, TokenService>();
+            // Register password hasher
+            builder.Services.AddScoped<IPasswordHasher, PasswordHasher>();
 
             // Add Swagger/OpenAPI
             builder.Services.AddEndpointsApiExplorer();

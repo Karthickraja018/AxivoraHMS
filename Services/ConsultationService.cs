@@ -150,7 +150,7 @@ namespace Axivora.Services
             return await GetConsultationByIdAsync(consultation.ConsultationId);
         }
 
-        public async Task<ConsultationDto> UpdateConsultationAsync(int consultationId, CreateConsultationDto updateConsultationDto)
+        public async Task<ConsultationDto> UpdateConsultationAsync(int consultationId, UpdateConsultationDto updateConsultationDto)
         {
             var consultation = await _context.Consultations.FindAsync(consultationId);
 
@@ -195,6 +195,41 @@ namespace Axivora.Services
             await _context.SaveChangesAsync();
 
             return await GetConsultationByIdAsync(consultationId);
+        }
+
+        public async Task<PaginationResponse<ConsultationDto>> GetConsultationsByDoctorUserIdAsync(int userId, PaginationParams paginationParams)
+        {
+            var doctor = await _context.Doctors
+                .FirstOrDefaultAsync(d => d.UserId == userId && !d.IsDeleted);
+
+            if (doctor == null)
+                throw new KeyNotFoundException("Doctor profile not found.");
+
+            var query = _context.Consultations
+                .Include(c => c.ICDCode)
+                .Include(c => c.Appointment)
+                    .ThenInclude(a => a.Doctor)
+                .Include(c => c.Prescriptions)
+                    .ThenInclude(p => p.Medicine)
+                .Include(c => c.OrderedTests)
+                    .ThenInclude(ot => ot.LabTest)
+                .Where(c => c.Appointment != null && c.Appointment.DoctorId == doctor.DoctorId);
+
+            var totalCount = await query.CountAsync();
+
+            var consultations = await query
+                .OrderByDescending(c => c.CreatedAt)
+                .Skip((paginationParams.PageNumber - 1) * paginationParams.PageSize)
+                .Take(paginationParams.PageSize)
+                .ToListAsync();
+
+            var consultationDtos = _mapper.Map<IEnumerable<ConsultationDto>>(consultations);
+
+            return new PaginationResponse<ConsultationDto>(
+                consultationDtos,
+                totalCount,
+                paginationParams.PageNumber,
+                paginationParams.PageSize);
         }
     }
 }

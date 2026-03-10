@@ -27,6 +27,16 @@ namespace Axivora.DTOs
         public int? ICDId { get; set; }
     }
 
+    public class UpdateConsultationDto
+    {
+        public string? ChiefComplaint { get; set; }
+        public string? Examination { get; set; }
+        public string? DiagnosisNotes { get; set; }
+        public string? TreatmentPlan { get; set; }
+        public string? InternalNotes { get; set; }
+        public int? ICDId { get; set; }
+    }
+
     public class PrescriptionDto
     {
         public int PrescriptionId { get; set; }

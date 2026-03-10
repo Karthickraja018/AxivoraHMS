@@ -193,6 +193,13 @@ namespace Axivora.Services
                 throw new KeyNotFoundException($"Patient with ID {patientId} not found.");
 
             _mapper.Map(updatePatientDto, patient);
+
+            if (updatePatientDto.Address is not null)
+            {
+                var createAddressDto = _mapper.Map<CreateAddressDto>(updatePatientDto.Address);
+                await UpsertAddressAsync(patient, createAddressDto);
+            }
+
             await _context.SaveChangesAsync();
 
             _logger.LogInformation("Updated patient {PatientId}.", patientId);

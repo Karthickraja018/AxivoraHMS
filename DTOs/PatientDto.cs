@@ -101,6 +101,16 @@ namespace Axivora.DTOs
         [StringLength(20)]
         public string? EmergencyContact { get; set; }
 
-        public int? AddressId { get; set; }
+        public UpdateAddressDto? Address { get; set; }
+    }
+
+    public class UpdateAddressDto
+    {
+        public string? AddressLine1 { get; set; }
+        public string? AddressLine2 { get; set; }
+        public string? City { get; set; }
+        public string? State { get; set; }
+        public string? PostalCode { get; set; }
+        public string? Country { get; set; }
     }
 }

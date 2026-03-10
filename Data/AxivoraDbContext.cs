@@ -11,6 +11,7 @@ namespace Axivora.Data
         public DbSet<User> Users { get; set; }
         public DbSet<Role> Roles { get; set; }
         public DbSet<UserRole> UserRoles { get; set; }
+        public DbSet<RefreshToken> RefreshTokens { get; set; }
 
         // Demographics & Clinical Setup
         public DbSet<Address> Addresses { get; set; }

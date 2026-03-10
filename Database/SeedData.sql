@@ -1,4 +1,4 @@
--- ============================================================================
+﻿-- ============================================================================
 -- Axivora HMS - Master Seed Data Script
 -- Description: Seed essential reference data for Axivora Hospital Management System
 -- Version: 1.1 (Fixed subquery errors)
@@ -55,14 +55,17 @@ PRINT '';
 -- ============================================================================
 PRINT '2. Seeding Admin User...';
 
+-- BCrypt hash of "Admin@123!" (cost factor 11, generated offline)
+DECLARE @AdminBcryptHash NVARCHAR(512) = '$2a$11$EaMmZaYZyhX42IMIjnKP2uD0.N4omX1kwNqMAlVidY6xsDhIuKLpm';
+
 -- Check if admin user exists
 IF NOT EXISTS (SELECT 1 FROM Users WHERE Email = 'admin@axivora.com')
 BEGIN
-    -- Create admin user
+    -- Create admin user with a valid BCrypt hash
     INSERT INTO Users (Email, PasswordHash, IsActive, IsDeleted, CreatedAt, UpdatedAt)
     VALUES (
         'admin@axivora.com',
-        'jGl25bVBBBW96Qi9Te4V37Fnqchz/Eu4qB9vKrRIqRg=', -- SHA256 hash of "Admin123!"
+        @AdminBcryptHash,
         1,
         0,
         GETDATE(),
@@ -77,10 +80,21 @@ BEGIN
     INSERT INTO UserRoles (UserId, RoleId)
     VALUES (@AdminUserId, @AdminRoleId);
 
-    PRINT '   ? Admin user created (Email: admin@axivora.com, Password: Admin123!)';
+    PRINT '   ✓ Admin user created (Email: admin@axivora.com, Password: Admin@123!)';
 END
 ELSE
-    PRINT '   - Admin user already exists';
+BEGIN
+    -- Fix existing admin users that still have the old SHA-256 hash
+    UPDATE Users
+    SET PasswordHash = @AdminBcryptHash
+    WHERE Email = 'admin@axivora.com'
+      AND PasswordHash NOT LIKE '$2%';
+
+    IF @@ROWCOUNT > 0
+        PRINT '   ? Admin user PasswordHash updated to BCrypt format';
+    ELSE
+        PRINT '   - Admin user already exists with valid hash';
+END
 
 PRINT '';
 
@@ -571,7 +585,7 @@ PRINT '';
 PRINT 'Admin Credentials:';
 PRINT '------------------';
 PRINT 'Email:    admin@axivora.com';
-PRINT 'Password: Admin123!';
+PRINT 'Password: Admin@123!';
 PRINT '';
 PRINT 'NOTE: Please change the admin password after first login!';
 PRINT '';

@@ -4,12 +4,15 @@ namespace Axivora.DTOs
     {
         public int ConsultationId { get; set; }
         public int AppointmentId { get; set; }
+        public int PatientId { get; set; }
         public string ChiefComplaint { get; set; }
         public string Examination { get; set; }
         public string DiagnosisNotes { get; set; }
         public string TreatmentPlan { get; set; }
         public string ICDCode { get; set; }
         public DateTime CreatedAt { get; set; }
+        public DateTime AppointmentDate { get; set; }
+        public string DoctorName { get; set; }
         public List<PrescriptionDto> Prescriptions { get; set; }
         public List<OrderedTestDto> OrderedTests { get; set; }
     }
@@ -50,7 +53,7 @@ namespace Axivora.DTOs
         public int OrderedTestId { get; set; }
         public string TestName { get; set; }
         public string Status { get; set; }
-        public string ResultValue { get; set; }
+        public string Result { get; set; }
         public DateTime? ResultDate { get; set; }
     }
 

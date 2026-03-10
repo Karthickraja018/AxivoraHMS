@@ -23,6 +23,8 @@ namespace Axivora.Services
         {
             var consultations = await _context.Consultations
                 .Include(c => c.ICDCode)
+                .Include(c => c.Appointment)
+                    .ThenInclude(a => a.Doctor)
                 .Include(c => c.Prescriptions)
                     .ThenInclude(p => p.Medicine)
                 .Include(c => c.OrderedTests)
@@ -36,6 +38,8 @@ namespace Axivora.Services
         {
             var query = _context.Consultations
                 .Include(c => c.ICDCode)
+                .Include(c => c.Appointment)
+                    .ThenInclude(a => a.Doctor)
                 .Include(c => c.Prescriptions)
                     .ThenInclude(p => p.Medicine)
                 .Include(c => c.OrderedTests)
@@ -62,6 +66,8 @@ namespace Axivora.Services
         {
             var consultation = await _context.Consultations
                 .Include(c => c.ICDCode)
+                .Include(c => c.Appointment)
+                    .ThenInclude(a => a.Doctor)
                 .Include(c => c.Prescriptions)
                     .ThenInclude(p => p.Medicine)
                 .Include(c => c.OrderedTests)
@@ -78,6 +84,8 @@ namespace Axivora.Services
         {
             var consultation = await _context.Consultations
                 .Include(c => c.ICDCode)
+                .Include(c => c.Appointment)
+                    .ThenInclude(a => a.Doctor)
                 .Include(c => c.Prescriptions)
                     .ThenInclude(p => p.Medicine)
                 .Include(c => c.OrderedTests)
@@ -88,6 +96,41 @@ namespace Axivora.Services
                 throw new KeyNotFoundException($"Consultation for appointment {appointmentId} not found.");
 
             return _mapper.Map<ConsultationDto>(consultation);
+        }
+
+        /// <summary>
+        /// Returns a paginated list of consultations belonging to the specified patient.
+        /// </summary>
+        /// <param name="patientId">The patient's identifier.</param>
+        /// <param name="paginationParams">Pagination settings (page number and page size).</param>
+        /// <returns>A <see cref="PaginationResponse{ConsultationDto}"/> for the patient's consultations.</returns>
+        public async Task<PaginationResponse<ConsultationDto>> GetConsultationsByPatientIdAsync(int patientId, PaginationParams paginationParams)
+        {
+            var query = _context.Consultations
+                .Include(c => c.ICDCode)
+                .Include(c => c.Appointment)
+                    .ThenInclude(a => a.Doctor)
+                .Include(c => c.Prescriptions)
+                    .ThenInclude(p => p.Medicine)
+                .Include(c => c.OrderedTests)
+                    .ThenInclude(ot => ot.LabTest)
+                .Where(c => c.Appointment != null && c.Appointment.PatientId == patientId);
+
+            var totalCount = await query.CountAsync();
+
+            var consultations = await query
+                .OrderByDescending(c => c.CreatedAt)
+                .Skip((paginationParams.PageNumber - 1) * paginationParams.PageSize)
+                .Take(paginationParams.PageSize)
+                .ToListAsync();
+
+            var consultationDtos = _mapper.Map<IEnumerable<ConsultationDto>>(consultations);
+
+            return new PaginationResponse<ConsultationDto>(
+                consultationDtos,
+                totalCount,
+                paginationParams.PageNumber,
+                paginationParams.PageSize);
         }
 
         public async Task<ConsultationDto> CreateConsultationAsync(CreateConsultationDto createConsultationDto)

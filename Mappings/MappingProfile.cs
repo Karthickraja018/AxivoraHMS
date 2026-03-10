@@ -15,6 +15,8 @@ namespace Axivora.Mappings
                 .ForMember(dest => dest.CreatedAt, opt => opt.Ignore())
                 .ForMember(dest => dest.IsDeleted, opt => opt.Ignore());
             CreateMap<UpdatePatientDto, Patient>()
+                .ForMember(dest => dest.AddressId, opt => opt.Ignore())
+                .ForMember(dest => dest.Address, opt => opt.Ignore())
                 .ForAllMembers(opts => opts.Condition((src, dest, srcMember) => srcMember != null));
 
             CreateMap<Doctor, DoctorDto>()
@@ -41,6 +43,10 @@ namespace Axivora.Mappings
             CreateMap<Address, AddressDto>();
             CreateMap<CreateAddressDto, Address>()
                 .ForMember(dest => dest.CreatedAt, opt => opt.Ignore());
+            CreateMap<UpdateAddressDto, Address>()
+                .ForAllMembers(opts => opts.Condition((src, dest, srcMember) => srcMember != null));
+            CreateMap<UpdateAddressDto, CreateAddressDto>()
+                .ForAllMembers(opts => opts.Condition((src, dest, srcMember) => srcMember != null));
 
             CreateMap<Department, DepartmentDto>();
             CreateMap<CreateDepartmentDto, Department>();
@@ -51,6 +57,9 @@ namespace Axivora.Mappings
 
             CreateMap<Consultation, ConsultationDto>()
                 .ForMember(dest => dest.ICDCode, opt => opt.MapFrom(src => src.ICDCode.Code))
+                .ForMember(dest => dest.PatientId, opt => opt.MapFrom(src => src.Appointment.PatientId))
+                .ForMember(dest => dest.AppointmentDate, opt => opt.MapFrom(src => src.Appointment.AppointmentStart))
+                .ForMember(dest => dest.DoctorName, opt => opt.MapFrom(src => src.Appointment.Doctor.FullName))
                 .ForMember(dest => dest.Prescriptions, opt => opt.MapFrom(src => src.Prescriptions))
                 .ForMember(dest => dest.OrderedTests, opt => opt.MapFrom(src => src.OrderedTests));
             CreateMap<CreateConsultationDto, Consultation>()
@@ -61,7 +70,8 @@ namespace Axivora.Mappings
             CreateMap<CreatePrescriptionDto, Prescription>();
 
             CreateMap<OrderedTest, OrderedTestDto>()
-                .ForMember(dest => dest.TestName, opt => opt.MapFrom(src => src.LabTest.TestName));
+                .ForMember(dest => dest.TestName, opt => opt.MapFrom(src => src.LabTest.TestName))
+                .ForMember(dest => dest.Result, opt => opt.MapFrom(src => src.Result));
             CreateMap<CreateOrderedTestDto, OrderedTest>();
         }
     }

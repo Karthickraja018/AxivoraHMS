@@ -130,5 +130,45 @@ namespace Axivora.Controllers
                 return NotFound(new { message = ex.Message });
             }
         }
+
+        /// <summary>
+        /// Issue a new JWT and refresh token using a valid refresh token (token rotation)
+        /// </summary>
+        [HttpPost("refresh-token")]
+        [ProducesResponseType(typeof(AuthResponseDto), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        public async Task<ActionResult<AuthResponseDto>> RefreshToken([FromBody] RefreshTokenRequestDto request)
+        {
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
+
+            try
+            {
+                var response = await _authService.RefreshTokenAsync(request.RefreshToken);
+                return Ok(response);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return Unauthorized(new { message = ex.Message });
+            }
+        }
+
+        /// <summary>
+        /// Revoke a refresh token (logout from a specific device/session)
+        /// </summary>
+        [HttpPost("revoke-token")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        public async Task<IActionResult> RevokeToken([FromBody] RevokeTokenRequestDto request)
+        {
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
+
+            var revoked = await _authService.RevokeTokenAsync(request.RefreshToken);
+            if (!revoked)
+                return BadRequest(new { message = "Token not found or already revoked." });
+
+            return Ok(new { message = "Token revoked successfully." });
+        }
     }
 }

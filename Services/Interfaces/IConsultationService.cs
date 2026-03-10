@@ -10,6 +10,7 @@ namespace Axivora.Services.Interfaces
         Task<PaginationResponse<ConsultationDto>> GetAllConsultationsAsync(PaginationParams paginationParams);
         Task<ConsultationDto> GetConsultationByIdAsync(int consultationId);
         Task<ConsultationDto> GetConsultationByAppointmentIdAsync(int appointmentId);
+        Task<PaginationResponse<ConsultationDto>> GetConsultationsByPatientIdAsync(int patientId, PaginationParams paginationParams);
         Task<ConsultationDto> CreateConsultationAsync(CreateConsultationDto createConsultationDto);
         Task<ConsultationDto> UpdateConsultationAsync(int consultationId, CreateConsultationDto updateConsultationDto);
         Task<ConsultationDto> AddPrescriptionAsync(int consultationId, CreatePrescriptionDto prescriptionDto);

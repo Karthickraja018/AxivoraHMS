@@ -26,5 +26,6 @@ namespace Axivora.Models
         public Patient? Patient { get; set; }
         public Doctor? Doctor { get; set; }
         public ICollection<AuditLog> AuditLogs { get; set; } = new List<AuditLog>();
+        public ICollection<RefreshToken> RefreshTokens { get; set; } = new List<RefreshToken>();
     }
 }

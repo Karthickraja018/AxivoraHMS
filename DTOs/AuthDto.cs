@@ -65,8 +65,22 @@ namespace Axivora.DTOs
         public int UserId { get; set; }
         public string Email { get; set; } = null!;
         public string Token { get; set; } = null!;
+        public string RefreshToken { get; set; } = null!;
+        public DateTime TokenExpiresAt { get; set; }
         public string Role { get; set; } = null!;
         public bool EmailVerified { get; set; }
         public bool ProfileCompleted { get; set; }
+    }
+
+    public class RefreshTokenRequestDto
+    {
+        [Required]
+        public string RefreshToken { get; set; } = null!;
+    }
+
+    public class RevokeTokenRequestDto
+    {
+        [Required]
+        public string RefreshToken { get; set; } = null!;
     }
 }

@@ -71,6 +71,7 @@ namespace Axivora.Services
 
             // 6. Generate JWT token using token service
             var token = _tokenService.GenerateJwtToken(user.UserId, user.Email, registerDto.Role);
+            var refreshToken = await CreateRefreshTokenAsync(user.UserId);
 
             // 7. Check if profile is completed
             bool profileCompleted = registerDto.Role == "Patient"
@@ -82,6 +83,8 @@ namespace Axivora.Services
                 UserId = user.UserId,
                 Email = user.Email,
                 Token = token,
+                RefreshToken = refreshToken,
+                TokenExpiresAt = _tokenService.GetJwtExpiryTime(),
                 Role = registerDto.Role,
                 EmailVerified = false, // TODO: implement email verification
                 ProfileCompleted = profileCompleted
@@ -112,6 +115,7 @@ namespace Axivora.Services
 
             // 5. Generate JWT token using token service
             var token = _tokenService.GenerateJwtToken(user.UserId, user.Email, roleName);
+            var refreshToken = await CreateRefreshTokenAsync(user.UserId);
 
             // 6. Check if profile is completed
             bool profileCompleted = roleName == "Patient"
@@ -127,10 +131,77 @@ namespace Axivora.Services
                 UserId = user.UserId,
                 Email = user.Email,
                 Token = token,
+                RefreshToken = refreshToken,
+                TokenExpiresAt = _tokenService.GetJwtExpiryTime(),
                 Role = roleName,
                 EmailVerified = true, // TODO: implement email verification
                 ProfileCompleted = profileCompleted
             };
+        }
+
+        public async Task<AuthResponseDto> RefreshTokenAsync(string refreshToken)
+        {
+            var storedToken = await _context.RefreshTokens
+                .Include(rt => rt.User)
+                    .ThenInclude(u => u.UserRoles)
+                        .ThenInclude(ur => ur.Role)
+                .FirstOrDefaultAsync(rt => rt.Token == refreshToken);
+
+            if (storedToken == null)
+                throw new UnauthorizedAccessException("Invalid refresh token.");
+
+            if (storedToken.IsRevoked)
+                throw new UnauthorizedAccessException("Refresh token has been revoked.");
+
+            if (storedToken.ExpiresAt < DateTime.UtcNow)
+                throw new UnauthorizedAccessException("Refresh token has expired.");
+
+            var user = storedToken.User;
+
+            if (!user.IsActive || user.IsDeleted)
+                throw new UnauthorizedAccessException("Account is disabled.");
+
+            // Rotate refresh token: revoke old, issue new
+            storedToken.IsRevoked = true;
+            storedToken.RevokedAt = DateTime.UtcNow;
+
+            var roleName = user.UserRoles.FirstOrDefault()?.Role?.RoleName ?? "Patient";
+
+            var newJwtToken = _tokenService.GenerateJwtToken(user.UserId, user.Email, roleName);
+            var newRefreshToken = await CreateRefreshTokenAsync(user.UserId);
+
+            bool profileCompleted = roleName == "Patient"
+                ? await _context.Patients.AnyAsync(p => p.UserId == user.UserId)
+                : roleName == "Doctor" && await _context.Doctors.AnyAsync(d => d.UserId == user.UserId);
+
+            await _context.SaveChangesAsync();
+
+            return new AuthResponseDto
+            {
+                UserId = user.UserId,
+                Email = user.Email,
+                Token = newJwtToken,
+                RefreshToken = newRefreshToken,
+                TokenExpiresAt = _tokenService.GetJwtExpiryTime(),
+                Role = roleName,
+                EmailVerified = true, // TODO: implement email verification
+                ProfileCompleted = profileCompleted
+            };
+        }
+
+        public async Task<bool> RevokeTokenAsync(string refreshToken)
+        {
+            var storedToken = await _context.RefreshTokens
+                .FirstOrDefaultAsync(rt => rt.Token == refreshToken);
+
+            if (storedToken == null || storedToken.IsRevoked)
+                return false;
+
+            storedToken.IsRevoked = true;
+            storedToken.RevokedAt = DateTime.UtcNow;
+            await _context.SaveChangesAsync();
+
+            return true;
         }
 
         public async Task<bool> VerifyEmailAsync(string email, string verificationCode)
@@ -165,6 +236,28 @@ namespace Axivora.Services
             await _context.SaveChangesAsync();
 
             return true;
+        }
+
+        private async Task<string> CreateRefreshTokenAsync(int userId)
+        {
+            var jwtSettings = _configuration.GetSection("JwtSettings");
+            var expiryDays = int.Parse(jwtSettings["RefreshTokenExpiryDays"] ?? "7");
+
+            var tokenValue = _tokenService.GenerateRefreshToken();
+
+            var refreshToken = new RefreshToken
+            {
+                UserId = userId,
+                Token = tokenValue,
+                ExpiresAt = DateTime.UtcNow.AddDays(expiryDays),
+                CreatedAt = DateTime.UtcNow,
+                IsRevoked = false
+            };
+
+            _context.RefreshTokens.Add(refreshToken);
+            await _context.SaveChangesAsync();
+
+            return tokenValue;
         }
 
         private static string GenerateSecureToken()

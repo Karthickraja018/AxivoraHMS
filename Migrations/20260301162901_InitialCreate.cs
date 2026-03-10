@@ -200,7 +200,7 @@ namespace Axivora.Migrations
                     BloodGroup = table.Column<string>(type: "nvarchar(10)", maxLength: 10, nullable: true),
                     EmergencyContact = table.Column<string>(type: "nvarchar(20)", maxLength: 20, nullable: true),
                     AddressId = table.Column<int>(type: "int", nullable: false),
-                    IsDeleted = table.Column<bool>(type: "bit", nullable: false, defaultValue: true),
+                    IsDeleted = table.Column<bool>(type: "bit", nullable: false, defaultValue: false),
                     CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false, defaultValueSql: "SYSDATETIME()")
                 },
                 constraints: table =>

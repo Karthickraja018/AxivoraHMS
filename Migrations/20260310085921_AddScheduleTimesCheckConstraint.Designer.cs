@@ -4,6 +4,7 @@ using Axivora.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Axivora.Migrations
 {
     [DbContext(typeof(AxivoraDbContext))]
-    partial class AxivoraDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260310085921_AddScheduleTimesCheckConstraint")]
+    partial class AddScheduleTimesCheckConstraint
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -624,6 +627,9 @@ namespace Axivora.Migrations
                     b.Property<int?>("HeartRate_BPM")
                         .HasColumnType("int");
 
+                    b.Property<int>("PatientId")
+                        .HasColumnType("int");
+
                     b.Property<DateTime>("RecordedAt")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("datetime2")
@@ -647,6 +653,9 @@ namespace Axivora.Migrations
 
                     b.HasIndex("ConsultationId")
                         .HasDatabaseName("IX_PatientVitals_ConsultationId");
+
+                    b.HasIndex("PatientId")
+                        .HasDatabaseName("IX_PatientVitals_PatientId");
 
                     b.ToTable("PatientVitals", (string)null);
                 });
@@ -993,7 +1002,15 @@ namespace Axivora.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.HasOne("Axivora.Models.Patient", "Patient")
+                        .WithMany("PatientVitals")
+                        .HasForeignKey("PatientId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.Navigation("Consultation");
+
+                    b.Navigation("Patient");
                 });
 
             modelBuilder.Entity("Axivora.Models.Prescription", b =>
@@ -1105,6 +1122,8 @@ namespace Axivora.Migrations
                     b.Navigation("Appointments");
 
                     b.Navigation("PatientAllergies");
+
+                    b.Navigation("PatientVitals");
                 });
 
             modelBuilder.Entity("Axivora.Models.Role", b =>

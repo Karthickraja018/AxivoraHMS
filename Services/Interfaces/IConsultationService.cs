@@ -12,6 +12,7 @@ namespace Axivora.Services.Interfaces
         Task<ConsultationDto> GetConsultationByAppointmentIdAsync(int appointmentId);
         Task<PaginationResponse<ConsultationDto>> GetConsultationsByPatientIdAsync(int patientId, PaginationParams paginationParams);
         Task<ConsultationDto> CreateConsultationAsync(CreateConsultationDto createConsultationDto);
+        Task<ConsultationDto> CreateConsultationAsync(CreateConsultationDto createConsultationDto, int callerUserId, string callerRole);
         Task<ConsultationDto> UpdateConsultationAsync(int consultationId, UpdateConsultationDto updateConsultationDto);
         Task<ConsultationDto> AddPrescriptionAsync(int consultationId, CreatePrescriptionDto prescriptionDto);
         Task<ConsultationDto> AddLabTestAsync(int consultationId, CreateOrderedTestDto orderedTestDto);

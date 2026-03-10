@@ -127,7 +127,7 @@ namespace Axivora.Migrations
                 table: "Patients",
                 type: "bit",
                 nullable: false,
-                defaultValue: true,
+                defaultValue: false,
                 oldClrType: typeof(bool),
                 oldType: "bit",
                 oldDefaultValue: false);

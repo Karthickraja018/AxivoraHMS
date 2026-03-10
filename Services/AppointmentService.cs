@@ -70,6 +70,22 @@ namespace Axivora.Services
             return _mapper.Map<AppointmentDto>(appointment);
         }
 
+        public async Task<AppointmentDto> GetAppointmentByIdAsync(int appointmentId, int callerUserId, string callerRole)
+        {
+            var appointment = await _context.Appointments
+                .Include(a => a.Patient)
+                .Include(a => a.Doctor)
+                .Include(a => a.Status)
+                .FirstOrDefaultAsync(a => a.AppointmentId == appointmentId && !a.IsDeleted);
+
+            if (appointment == null)
+                throw new KeyNotFoundException($"Appointment with ID {appointmentId} not found.");
+
+            await EnforceOwnershipAsync(appointment, callerUserId, callerRole);
+
+            return _mapper.Map<AppointmentDto>(appointment);
+        }
+
         public async Task<IEnumerable<AppointmentDto>> GetAppointmentsByPatientIdAsync(int patientId)
         {
             var appointments = await _context.Appointments
@@ -127,6 +143,24 @@ namespace Axivora.Services
             if (existingAppointment)
                 throw new InvalidOperationException("Doctor already has an appointment during this time slot.");
 
+            var requestedDay = (int)createAppointmentDto.AppointmentStart.DayOfWeek;
+            var requestedStart = createAppointmentDto.AppointmentStart.TimeOfDay;
+            var requestedEnd = createAppointmentDto.AppointmentEnd.TimeOfDay;
+
+            var schedules = await _context.DoctorSchedules
+                .Where(s => s.DoctorId == createAppointmentDto.DoctorId &&
+                            s.IsActive &&
+                            s.DayOfWeek == requestedDay)
+                .Select(s => new { s.StartTime, s.EndTime })
+                .ToListAsync();
+
+            var withinSchedule = schedules
+                .Any(s => s.StartTime <= requestedStart && s.EndTime >= requestedEnd);
+
+            if (!withinSchedule)
+                throw new InvalidOperationException(
+                    "The requested time slot does not fall within the doctor's scheduled working hours.");
+
             var appointment = _mapper.Map<Appointment>(createAppointmentDto);
             appointment.CreatedAt = DateTime.UtcNow;
             appointment.IsDeleted = false;
@@ -135,6 +169,38 @@ namespace Axivora.Services
             await _context.SaveChangesAsync();
 
             return await GetAppointmentByIdAsync(appointment.AppointmentId);
+        }
+
+        public async Task<AppointmentDto> CreateAppointmentAsync(CreateAppointmentDto createAppointmentDto, int callerUserId, string callerRole)
+        {
+            if (callerRole == "Patient")
+            {
+                // Resolve the patient's own PatientId from their JWT user — ignore body value entirely
+                var callerPatient = await _context.Patients
+                    .FirstOrDefaultAsync(p => p.UserId == callerUserId && !p.IsDeleted);
+
+                if (callerPatient == null)
+                    throw new KeyNotFoundException("Patient profile not found. Please complete your profile first.");
+
+                createAppointmentDto.PatientId = callerPatient.PatientId;
+            }
+
+            var result = await CreateAppointmentAsync(createAppointmentDto);
+
+            if (callerRole is "Doctor" or "Admin")
+            {
+                _context.AuditLogs.Add(new AuditLog
+                {
+                    UserId = callerUserId,
+                    Action = "CreateAppointment",
+                    EntityName = "Appointment",
+                    EntityId = result.AppointmentId,
+                    NewValue = $"PatientId={result.PatientId}, DoctorId={result.DoctorId}, Start={result.AppointmentStart:O}"
+                });
+                await _context.SaveChangesAsync();
+            }
+
+            return result;
         }
 
         public async Task<AppointmentDto> UpdateAppointmentAsync(int appointmentId, UpdateAppointmentDto updateAppointmentDto)
@@ -151,12 +217,57 @@ namespace Axivora.Services
             return await GetAppointmentByIdAsync(appointmentId);
         }
 
+        public async Task<AppointmentDto> UpdateAppointmentAsync(int appointmentId, UpdateAppointmentDto updateAppointmentDto, int callerUserId, string callerRole)
+        {
+            var appointment = await _context.Appointments
+                .Include(a => a.Status)
+                .FirstOrDefaultAsync(a => a.AppointmentId == appointmentId && !a.IsDeleted);
+
+            if (appointment == null)
+                throw new KeyNotFoundException($"Appointment with ID {appointmentId} not found.");
+
+            await EnforceOwnershipAsync(appointment, callerUserId, callerRole);
+
+            if (updateAppointmentDto.StatusId.HasValue)
+            {
+                var targetStatus = await _context.AppointmentStatuses
+                    .FirstOrDefaultAsync(s => s.StatusId == updateAppointmentDto.StatusId.Value);
+
+                if (targetStatus == null)
+                    throw new KeyNotFoundException($"Appointment status with ID {updateAppointmentDto.StatusId.Value} not found.");
+
+                var currentStatusName = appointment.Status?.StatusName ?? string.Empty;
+                AppointmentStatusTransitions.Validate(currentStatusName, targetStatus.StatusName, callerRole);
+            }
+
+            _mapper.Map(updateAppointmentDto, appointment);
+
+            await _context.SaveChangesAsync();
+
+            return await GetAppointmentByIdAsync(appointmentId);
+        }
+
         public async Task<bool> CancelAppointmentAsync(int appointmentId)
         {
             var appointment = await _context.Appointments.FindAsync(appointmentId);
 
             if (appointment == null)
                 throw new KeyNotFoundException($"Appointment with ID {appointmentId} not found.");
+
+            appointment.IsDeleted = true;
+
+            await _context.SaveChangesAsync();
+            return true;
+        }
+
+        public async Task<bool> CancelAppointmentAsync(int appointmentId, int callerUserId, string callerRole)
+        {
+            var appointment = await _context.Appointments.FindAsync(appointmentId);
+
+            if (appointment == null)
+                throw new KeyNotFoundException($"Appointment with ID {appointmentId} not found.");
+
+            await EnforceOwnershipAsync(appointment, callerUserId, callerRole);
 
             appointment.IsDeleted = true;
 
@@ -268,6 +379,60 @@ namespace Axivora.Services
             await _context.SaveChangesAsync();
 
             return await GetAppointmentByIdAsync(appointmentId);
+        }
+
+        public async Task<AppointmentDto> UpdateAppointmentStatusAsync(int appointmentId, string statusName, string callerRole)
+        {
+            var appointment = await _context.Appointments
+                .Include(a => a.Status)
+                .FirstOrDefaultAsync(a => a.AppointmentId == appointmentId && !a.IsDeleted);
+
+            if (appointment == null)
+                throw new KeyNotFoundException($"Appointment with ID {appointmentId} not found.");
+
+            var targetStatus = await _context.AppointmentStatuses
+                .FirstOrDefaultAsync(s => s.StatusName == statusName);
+
+            if (targetStatus == null)
+                throw new KeyNotFoundException($"Appointment status '{statusName}' not found.");
+
+            var currentStatusName = appointment.Status?.StatusName ?? string.Empty;
+            AppointmentStatusTransitions.Validate(currentStatusName, statusName, callerRole);
+
+            appointment.StatusId = targetStatus.StatusId;
+            await _context.SaveChangesAsync();
+
+            return await GetAppointmentByIdAsync(appointmentId);
+        }
+
+        /// <summary>
+        /// Throws <see cref="UnauthorizedAccessException"/> when the caller does not own the appointment.
+        /// Admin ? always allowed.
+        /// Doctor ? allowed when appointment.DoctorId matches the caller's DoctorId.
+        /// Patient (all other roles) ? allowed when appointment.PatientId matches the caller's PatientId.
+        /// </summary>
+        private async Task EnforceOwnershipAsync(Appointment appointment, int callerUserId, string callerRole)
+        {
+            if (callerRole == "Admin")
+                return;
+
+            if (callerRole == "Doctor")
+            {
+                var doctor = await _context.Doctors
+                    .FirstOrDefaultAsync(d => d.UserId == callerUserId && !d.IsDeleted);
+
+                if (doctor == null || appointment.DoctorId != doctor.DoctorId)
+                    throw new UnauthorizedAccessException("You do not have permission to access this appointment.");
+
+                return;
+            }
+
+            // Patient (or any unrecognised role)
+            var patient = await _context.Patients
+                .FirstOrDefaultAsync(p => p.UserId == callerUserId && !p.IsDeleted);
+
+            if (patient == null || appointment.PatientId != patient.PatientId)
+                throw new UnauthorizedAccessException("You do not have permission to access this appointment.");
         }
     }
 }

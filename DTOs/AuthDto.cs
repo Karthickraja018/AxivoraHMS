@@ -20,6 +20,7 @@ namespace Axivora.DTOs
         public string ConfirmPassword { get; set; } = null!;
 
         [Required]
+        [AllowedValues("Patient", ErrorMessage = "Self-registration is only allowed for the Patient role.")]
         public string Role { get; set; } = "Patient"; // Only "Patient" allowed for self-registration
     }
 

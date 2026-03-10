@@ -67,11 +67,6 @@ namespace Axivora.Configurations
                    .WithOne(apt => apt.Patient)
                    .HasForeignKey(apt => apt.PatientId)
                    .OnDelete(DeleteBehavior.Restrict);
-
-            builder.HasMany(p => p.PatientVitals)
-                   .WithOne(pv => pv.Patient)
-                   .HasForeignKey(pv => pv.PatientId)
-                   .OnDelete(DeleteBehavior.Restrict);
         }
     }
 }

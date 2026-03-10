@@ -18,10 +18,10 @@ namespace Axivora.Controllers
         }
 
         /// <summary>
-        /// Upload or update a lab test result (Admin, LabTechnician only)
+        /// Upload or update a lab test result (Admin, Doctor only)
         /// </summary>
         [HttpPut("{orderedTestId}/result")]
-        [Authorize(Roles = "Admin,LabTechnician")]
+        [Authorize(Roles = "Admin,Doctor")]
         [ProducesResponseType(typeof(LabResultDto), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -37,10 +37,10 @@ namespace Axivora.Controllers
         }
 
         /// <summary>
-        /// Get all lab test results for a patient (Admin, Doctor, LabTechnician)
+        /// Get all lab test results for a patient (Admin, Doctor)
         /// </summary>
         [HttpGet("patient/{patientId}")]
-        [Authorize(Roles = "Admin,Doctor,LabTechnician")]
+        [Authorize(Roles = "Admin,Doctor")]
         [ProducesResponseType(typeof(IEnumerable<LabResultDto>), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -52,10 +52,10 @@ namespace Axivora.Controllers
         }
 
         /// <summary>
-        /// Get all lab tests ordered during a consultation (Admin, Doctor, LabTechnician)
+        /// Get all lab tests ordered during a consultation (Admin, Doctor)
         /// </summary>
         [HttpGet("consultation/{consultationId}")]
-        [Authorize(Roles = "Admin,Doctor,LabTechnician")]
+        [Authorize(Roles = "Admin,Doctor")]
         [ProducesResponseType(typeof(IEnumerable<LabResultDto>), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]

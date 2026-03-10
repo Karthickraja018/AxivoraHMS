@@ -26,12 +26,12 @@ namespace Axivora.Services
             if (dto.EndTime <= dto.StartTime)
                 throw new ArgumentException("EndTime must be after StartTime.");
 
-            var hasOverlap = await _context.DoctorSchedules
-                .AnyAsync(s => s.DoctorId == doctorId
-                    && s.IsActive
-                    && s.DayOfWeek == dto.DayOfWeek
-                    && s.StartTime < dto.EndTime
-                    && s.EndTime > dto.StartTime);
+            var existingActiveSchedules = await _context.DoctorSchedules
+                .Where(s => s.DoctorId == doctorId && s.IsActive && s.DayOfWeek == dto.DayOfWeek)
+                .ToListAsync();
+
+            var hasOverlap = existingActiveSchedules
+                .Any(s => s.StartTime < dto.EndTime && s.EndTime > dto.StartTime);
 
             if (hasOverlap)
                 throw new InvalidOperationException(
@@ -63,11 +63,12 @@ namespace Axivora.Services
 
             var schedules = await _context.DoctorSchedules
                 .Where(s => s.DoctorId == doctorId)
-                .OrderBy(s => s.DayOfWeek)
-                .ThenBy(s => s.StartTime)
                 .ToListAsync();
 
-            return schedules.Select(s => MapToDto(s, doctor.FullName));
+            return schedules
+                .OrderBy(s => s.DayOfWeek)
+                .ThenBy(s => s.StartTime)
+                .Select(s => MapToDto(s, doctor.FullName));
         }
 
         public async Task<DoctorScheduleDto> UpdateScheduleAsync(int scheduleId, UpdateScheduleDto dto)
@@ -86,13 +87,15 @@ namespace Axivora.Services
             if (newEnd <= newStart)
                 throw new ArgumentException("EndTime must be after StartTime.");
 
-            var hasOverlap = await _context.DoctorSchedules
-                .AnyAsync(s => s.DoctorId == schedule.DoctorId
+            var siblingsOnDay = await _context.DoctorSchedules
+                .Where(s => s.DoctorId == schedule.DoctorId
                     && s.ScheduleId != scheduleId
                     && s.IsActive
-                    && s.DayOfWeek == newDay
-                    && s.StartTime < newEnd
-                    && s.EndTime > newStart);
+                    && s.DayOfWeek == newDay)
+                .ToListAsync();
+
+            var hasOverlap = siblingsOnDay
+                .Any(s => s.StartTime < newEnd && s.EndTime > newStart);
 
             if (hasOverlap)
                 throw new InvalidOperationException(

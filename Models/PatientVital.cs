@@ -9,9 +9,6 @@ namespace Axivora.Models
         public int VitalId { get; set; }
 
         [Required]
-        public int PatientId { get; set; }
-
-        [Required]
         public int ConsultationId { get; set; }
 
         public decimal? Temperature_C { get; set; }
@@ -28,8 +25,7 @@ namespace Axivora.Models
 
         public DateTime RecordedAt { get; set; } = DateTime.UtcNow;
 
-        // Navigation properties
-        public Patient? Patient { get; set; }
+        // Navigation property
         public Consultation? Consultation { get; set; }
     }
 }

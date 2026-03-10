@@ -120,7 +120,9 @@ namespace Axivora.Controllers
             if (!ModelState.IsValid)
                 return BadRequest(ModelState);
 
-            var consultation = await _consultationService.CreateConsultationAsync(createConsultationDto);
+            var userId = int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+            var role = User.FindFirstValue(ClaimTypes.Role)!;
+            var consultation = await _consultationService.CreateConsultationAsync(createConsultationDto, userId, role);
             return CreatedAtAction(nameof(GetConsultationById), new { id = consultation.ConsultationId }, consultation);
         }
 

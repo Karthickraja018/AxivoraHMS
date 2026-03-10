@@ -46,11 +46,14 @@ namespace Axivora.Controllers
         /// </summary>
         [HttpGet("{id}")]
         [ProducesResponseType(typeof(AppointmentDto), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         public async Task<ActionResult<AppointmentDto>> GetAppointmentById(int id)
         {
-            var appointment = await _appointmentService.GetAppointmentByIdAsync(id);
+            var userId = int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+            var role = User.FindFirstValue(ClaimTypes.Role)!;
+            var appointment = await _appointmentService.GetAppointmentByIdAsync(id, userId, role);
             return Ok(appointment);
         }
 
@@ -125,7 +128,9 @@ namespace Axivora.Controllers
             if (!ModelState.IsValid)
                 return BadRequest(ModelState);
 
-            var appointment = await _appointmentService.CreateAppointmentAsync(createAppointmentDto);
+            var userId = int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+            var role = User.FindFirstValue(ClaimTypes.Role)!;
+            var appointment = await _appointmentService.CreateAppointmentAsync(createAppointmentDto, userId, role);
             return CreatedAtAction(nameof(GetAppointmentById), new { id = appointment.AppointmentId }, appointment);
         }
 
@@ -144,7 +149,8 @@ namespace Axivora.Controllers
             if (!ModelState.IsValid)
                 return BadRequest(ModelState);
 
-            var appointment = await _appointmentService.UpdateAppointmentStatusAsync(id, statusDto.Status);
+            var role = User.FindFirstValue(ClaimTypes.Role)!;
+            var appointment = await _appointmentService.UpdateAppointmentStatusAsync(id, statusDto.Status, role);
             return Ok(appointment);
         }
 
@@ -153,6 +159,7 @@ namespace Axivora.Controllers
         /// </summary>
         [HttpPut("{id}")]
         [ProducesResponseType(typeof(AppointmentDto), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         public async Task<ActionResult<AppointmentDto>> UpdateAppointment(int id, [FromBody] UpdateAppointmentDto updateAppointmentDto)
@@ -160,7 +167,9 @@ namespace Axivora.Controllers
             if (!ModelState.IsValid)
                 return BadRequest(ModelState);
 
-            var appointment = await _appointmentService.UpdateAppointmentAsync(id, updateAppointmentDto);
+            var userId = int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+            var role = User.FindFirstValue(ClaimTypes.Role)!;
+            var appointment = await _appointmentService.UpdateAppointmentAsync(id, updateAppointmentDto, userId, role);
             return Ok(appointment);
         }
 
@@ -169,11 +178,14 @@ namespace Axivora.Controllers
         /// </summary>
         [HttpDelete("{id}")]
         [ProducesResponseType(StatusCodes.Status204NoContent)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         public async Task<ActionResult> CancelAppointment(int id)
         {
-            await _appointmentService.CancelAppointmentAsync(id);
+            var userId = int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+            var role = User.FindFirstValue(ClaimTypes.Role)!;
+            await _appointmentService.CancelAppointmentAsync(id, userId, role);
             return NoContent();
         }
 

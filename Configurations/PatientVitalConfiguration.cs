@@ -15,9 +15,6 @@ namespace Axivora.Configurations
             builder.Property(pv => pv.VitalId)
                    .ValueGeneratedOnAdd();
 
-            builder.Property(pv => pv.PatientId)
-                   .IsRequired();
-
             builder.Property(pv => pv.ConsultationId)
                    .IsRequired();
 
@@ -32,9 +29,6 @@ namespace Axivora.Configurations
                    .HasDefaultValueSql("SYSDATETIME()");
 
             // Indexes for quick lookup
-            builder.HasIndex(pv => pv.PatientId)
-                   .HasDatabaseName("IX_PatientVitals_PatientId");
-
             builder.HasIndex(pv => pv.ConsultationId)
                    .HasDatabaseName("IX_PatientVitals_ConsultationId");
         }

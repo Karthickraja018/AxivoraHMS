@@ -38,7 +38,7 @@ namespace Axivora.Models
         [Required]
         public int AddressId { get; set; }
 
-        public bool IsDeleted { get; set; } = true;
+        public bool IsDeleted { get; set; } = false;
 
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
@@ -47,6 +47,5 @@ namespace Axivora.Models
         public Address? Address { get; set; }
         public ICollection<PatientAllergy> PatientAllergies { get; set; } = new List<PatientAllergy>();
         public ICollection<Appointment> Appointments { get; set; } = new List<Appointment>();
-        public ICollection<PatientVital> PatientVitals { get; set; } = new List<PatientVital>();
     }
 }

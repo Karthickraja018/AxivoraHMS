@@ -35,6 +35,10 @@ namespace Axivora.Configurations
                    .IsRequired()
                    .HasDefaultValue(true);
 
+            builder.HasCheckConstraint(
+                "CHK_DoctorSchedule_Times",
+                "\"EndTime\" > \"StartTime\"");
+
             // Index for quick lookup of doctor schedules
             builder.HasIndex(ds => new { ds.DoctorId, ds.DayOfWeek })
                    .HasDatabaseName("IX_DoctorSchedules_DoctorId_DayOfWeek");

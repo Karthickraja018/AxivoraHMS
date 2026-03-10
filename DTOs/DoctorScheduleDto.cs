@@ -18,7 +18,9 @@ namespace Axivora.DTOs
 
     public class CreateScheduleDto
     {
-        [Range(0, 6, ErrorMessage = "DayOfWeek must be 0 (Sunday) to 6 (Saturday).")]
+        // 0 = Sunday … 6 = Saturday, matching System.DayOfWeek (.NET convention).
+        // Do NOT use SQL Server DATEPART(weekday) values here — those are 1-based.
+        [Range(0, 6, ErrorMessage = "DayOfWeek must be 0 (Sunday) to 6 (Saturday) — .NET System.DayOfWeek convention.")]
         public int DayOfWeek { get; set; }
 
         [Required(ErrorMessage = "StartTime is required.")]
@@ -33,7 +35,8 @@ namespace Axivora.DTOs
 
     public class UpdateScheduleDto
     {
-        [Range(0, 6, ErrorMessage = "DayOfWeek must be 0 (Sunday) to 6 (Saturday).")]
+        // 0 = Sunday … 6 = Saturday, matching System.DayOfWeek (.NET convention).
+        [Range(0, 6, ErrorMessage = "DayOfWeek must be 0 (Sunday) to 6 (Saturday) — .NET System.DayOfWeek convention.")]
         public int? DayOfWeek { get; set; }
 
         public TimeSpan? StartTime { get; set; }

@@ -143,7 +143,12 @@ namespace Axivora.Services
             if (existingAppointment)
                 throw new InvalidOperationException("Doctor already has an appointment during this time slot.");
 
+            // (int)DayOfWeek uses .NET's 0=Sunday … 6=Saturday convention, which is
+            // identical to what DoctorSchedules.DayOfWeek stores. No adjustment needed.
+            // Never substitute DATEPART(weekday, …) here — SQL Server returns 1-based
+            // values under the default DATEFIRST 7 setting.
             var requestedDay = (int)createAppointmentDto.AppointmentStart.DayOfWeek;
+
             var requestedStart = createAppointmentDto.AppointmentStart.TimeOfDay;
             var requestedEnd = createAppointmentDto.AppointmentEnd.TimeOfDay;
 

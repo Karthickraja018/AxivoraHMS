@@ -13,10 +13,12 @@ namespace Axivora.Controllers
     public class AppointmentsController : ControllerBase
     {
         private readonly IAppointmentService _appointmentService;
+        private readonly IPatientService _patientService;
 
-        public AppointmentsController(IAppointmentService appointmentService)
+        public AppointmentsController(IAppointmentService appointmentService, IPatientService patientService)
         {
             _appointmentService = appointmentService;
+            _patientService = patientService;
         }
 
         /// <summary>
@@ -63,8 +65,19 @@ namespace Axivora.Controllers
         [HttpGet("patient/{patientId}")]
         [ProducesResponseType(typeof(IEnumerable<AppointmentDto>), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
         public async Task<ActionResult<IEnumerable<AppointmentDto>>> GetAppointmentsByPatient(int patientId)
         {
+            var callerUserId = int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+            var callerRole = User.FindFirstValue(ClaimTypes.Role)!;
+
+            if (callerRole == "Patient")
+            {
+                var callerPatient = await _patientService.GetPatientByUserIdAsync(callerUserId);
+                if (callerPatient == null || callerPatient.PatientId != patientId)
+                    return Forbid();
+            }
+
             var appointments = await _appointmentService.GetAppointmentsByPatientIdAsync(patientId);
             return Ok(appointments);
         }

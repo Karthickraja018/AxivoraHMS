@@ -189,13 +189,16 @@ namespace Axivora.Services
             };
         }
 
-        public async Task<bool> RevokeTokenAsync(string refreshToken)
+        public async Task<bool> RevokeTokenAsync(string refreshToken, int callerUserId)
         {
             var storedToken = await _context.RefreshTokens
                 .FirstOrDefaultAsync(rt => rt.Token == refreshToken);
 
             if (storedToken == null || storedToken.IsRevoked)
                 return false;
+
+            if (storedToken.UserId != callerUserId)
+                throw new UnauthorizedAccessException("You can only revoke your own refresh tokens.");
 
             storedToken.IsRevoked = true;
             storedToken.RevokedAt = DateTime.UtcNow;

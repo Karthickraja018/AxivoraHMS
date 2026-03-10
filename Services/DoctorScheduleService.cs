@@ -35,7 +35,7 @@ namespace Axivora.Services
 
             if (hasOverlap)
                 throw new InvalidOperationException(
-                    $"A schedule for {(DayOfWeek)dto.DayOfWeek} already overlaps with the requested time range.");
+                    $"A schedule for {(System.DayOfWeek)dto.DayOfWeek} already overlaps with the requested time range.");
 
             var schedule = new DoctorSchedule
             {
@@ -71,7 +71,7 @@ namespace Axivora.Services
                 .Select(s => MapToDto(s, doctor.FullName));
         }
 
-        public async Task<DoctorScheduleDto> UpdateScheduleAsync(int scheduleId, UpdateScheduleDto dto)
+        public async Task<DoctorScheduleDto> UpdateScheduleAsync(int scheduleId, UpdateScheduleDto dto, int callerUserId, string callerRole)
         {
             var schedule = await _context.DoctorSchedules
                 .Include(s => s.Doctor)
@@ -79,6 +79,16 @@ namespace Axivora.Services
 
             if (schedule == null)
                 throw new KeyNotFoundException($"Schedule with ID {scheduleId} not found.");
+
+            if (callerRole != "Admin")
+            {
+                var callerDoctor = await _context.Doctors
+                    .FirstOrDefaultAsync(d => d.UserId == callerUserId && !d.IsDeleted);
+
+                if (callerDoctor == null || schedule.DoctorId != callerDoctor.DoctorId)
+                    throw new UnauthorizedAccessException(
+                        "You are not authorized to modify another doctor's schedule.");
+            }
 
             var newDay = dto.DayOfWeek ?? schedule.DayOfWeek;
             var newStart = dto.StartTime ?? schedule.StartTime;
@@ -99,7 +109,7 @@ namespace Axivora.Services
 
             if (hasOverlap)
                 throw new InvalidOperationException(
-                    $"Updating this schedule would overlap with an existing schedule on {(DayOfWeek)newDay}.");
+                    $"Updating this schedule would overlap with an existing schedule on {(System.DayOfWeek)newDay}.");
 
             if (dto.DayOfWeek.HasValue) schedule.DayOfWeek = dto.DayOfWeek.Value;
             if (dto.StartTime.HasValue) schedule.StartTime = dto.StartTime.Value;
@@ -112,12 +122,22 @@ namespace Axivora.Services
             return MapToDto(schedule, schedule.Doctor!.FullName);
         }
 
-        public async Task DeleteScheduleAsync(int scheduleId)
+        public async Task DeleteScheduleAsync(int scheduleId, int callerUserId, string callerRole)
         {
             var schedule = await _context.DoctorSchedules.FindAsync(scheduleId);
 
             if (schedule == null)
                 throw new KeyNotFoundException($"Schedule with ID {scheduleId} not found.");
+
+            if (callerRole != "Admin")
+            {
+                var callerDoctor = await _context.Doctors
+                    .FirstOrDefaultAsync(d => d.UserId == callerUserId && !d.IsDeleted);
+
+                if (callerDoctor == null || schedule.DoctorId != callerDoctor.DoctorId)
+                    throw new UnauthorizedAccessException(
+                        "You are not authorized to delete another doctor's schedule.");
+            }
 
             _context.DoctorSchedules.Remove(schedule);
             await _context.SaveChangesAsync();

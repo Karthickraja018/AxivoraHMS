@@ -9,6 +9,13 @@ namespace Axivora.Models
 
         public int DoctorId { get; set; }
 
+        // DayOfWeek follows the .NET System.DayOfWeek enum convention:
+        //   0 = Sunday, 1 = Monday, 2 = Tuesday, 3 = Wednesday,
+        //   4 = Thursday, 5 = Friday, 6 = Saturday.
+        // This is the single canonical source for day numbering in this codebase.
+        // Never compare against SQL Server DATEPART(weekday, ...) directly — that
+        // function returns 1-based values under the default DATEFIRST 7 setting.
+        // Always use (int)DateTime.DayOfWeek when matching against this column.
         [Range(0, 6, ErrorMessage = "Day of week must be between 0 (Sunday) and 6 (Saturday)")]
         public int DayOfWeek { get; set; }
 

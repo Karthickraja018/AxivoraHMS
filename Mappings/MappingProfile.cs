@@ -66,6 +66,7 @@ namespace Axivora.Mappings
                 .ForMember(dest => dest.CreatedAt, opt => opt.Ignore());
 
             CreateMap<UpdateConsultationDto, Consultation>()
+                .ForMember(dest => dest.AppointmentId, opt => opt.Ignore())
                 .ForMember(dest => dest.Notes, opt => opt.MapFrom(src => src.InternalNotes))
                 .ForAllMembers(opts => opts.Condition((src, dest, srcMember) => srcMember != null));
 

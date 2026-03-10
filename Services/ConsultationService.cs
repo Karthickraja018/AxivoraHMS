@@ -224,7 +224,10 @@ namespace Axivora.Services
             if (consultation == null)
                 throw new KeyNotFoundException($"Consultation with ID {consultationId} not found.");
 
+            // AppointmentId is immutable after creation — preserve it across the mapping.
+            var originalAppointmentId = consultation.AppointmentId;
             _mapper.Map(updateConsultationDto, consultation);
+            consultation.AppointmentId = originalAppointmentId;
 
             await _context.SaveChangesAsync();
 
@@ -237,6 +240,13 @@ namespace Axivora.Services
 
             if (consultation == null)
                 throw new KeyNotFoundException($"Consultation with ID {consultationId} not found.");
+
+            var alreadyPrescribed = await _context.Prescriptions
+                .AnyAsync(p => p.ConsultationId == consultationId && p.MedicineId == prescriptionDto.MedicineId);
+
+            if (alreadyPrescribed)
+                throw new InvalidOperationException(
+                    $"Medicine with ID {prescriptionDto.MedicineId} has already been prescribed in this consultation.");
 
             var prescription = _mapper.Map<Prescription>(prescriptionDto);
             prescription.ConsultationId = consultationId;

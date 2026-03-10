@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Axivora.DTOs;
 using Axivora.Services.Interfaces;
+using System.Security.Claims;
 
 namespace Axivora.Controllers
 {
@@ -64,7 +65,10 @@ namespace Axivora.Controllers
             if (!ModelState.IsValid)
                 return BadRequest(ModelState);
 
-            var schedule = await _scheduleService.UpdateScheduleAsync(scheduleId, dto);
+            var callerUserId = int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+            var callerRole = User.FindFirstValue(ClaimTypes.Role)!;
+
+            var schedule = await _scheduleService.UpdateScheduleAsync(scheduleId, dto, callerUserId, callerRole);
             return Ok(schedule);
         }
 
@@ -79,7 +83,10 @@ namespace Axivora.Controllers
         [ProducesResponseType(StatusCodes.Status403Forbidden)]
         public async Task<ActionResult> DeleteSchedule(int scheduleId)
         {
-            await _scheduleService.DeleteScheduleAsync(scheduleId);
+            var callerUserId = int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+            var callerRole = User.FindFirstValue(ClaimTypes.Role)!;
+
+            await _scheduleService.DeleteScheduleAsync(scheduleId, callerUserId, callerRole);
             return NoContent();
         }
     }

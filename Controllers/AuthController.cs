@@ -1,4 +1,6 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using System.Security.Claims;
 using Axivora.DTOs;
 using Axivora.Services.Interfaces;
 
@@ -157,18 +159,30 @@ namespace Axivora.Controllers
         /// Revoke a refresh token (logout from a specific device/session)
         /// </summary>
         [HttpPost("revoke-token")]
+        [Authorize]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
         public async Task<IActionResult> RevokeToken([FromBody] RevokeTokenRequestDto request)
         {
             if (!ModelState.IsValid)
                 return BadRequest(ModelState);
 
-            var revoked = await _authService.RevokeTokenAsync(request.RefreshToken);
-            if (!revoked)
-                return BadRequest(new { message = "Token not found or already revoked." });
+            var callerUserId = int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
 
-            return Ok(new { message = "Token revoked successfully." });
+            try
+            {
+                var revoked = await _authService.RevokeTokenAsync(request.RefreshToken, callerUserId);
+                if (!revoked)
+                    return BadRequest(new { message = "Token not found or already revoked." });
+
+                return Ok(new { message = "Token revoked successfully." });
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return Forbid();
+            }
         }
     }
 }

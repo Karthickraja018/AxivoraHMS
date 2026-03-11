@@ -36,5 +36,8 @@ namespace Axivora.Models
         public ICollection<PatientVital> PatientVitals { get; set; } = new List<PatientVital>();
         public ICollection<Prescription> Prescriptions { get; set; } = new List<Prescription>();
         public ICollection<OrderedTest> OrderedTests { get; set; } = new List<OrderedTest>();
+
+        // One consultation may have at most one patient feedback
+        public SessionFeedback? SessionFeedback { get; set; }
     }
 }

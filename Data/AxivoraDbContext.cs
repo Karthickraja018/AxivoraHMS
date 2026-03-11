@@ -42,6 +42,9 @@ namespace Axivora.Data
         // Audit Logging
         public DbSet<AuditLog> AuditLogs { get; set; }
 
+        // Patient Feedback
+        public DbSet<SessionFeedback> SessionFeedbacks { get; set; }
+
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);

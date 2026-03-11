@@ -78,6 +78,17 @@ namespace Axivora.Mappings
                 .ForMember(dest => dest.TestName, opt => opt.MapFrom(src => src.LabTest.TestName))
                 .ForMember(dest => dest.Result, opt => opt.MapFrom(src => src.Result));
             CreateMap<CreateOrderedTestDto, OrderedTest>();
+
+            // Session Feedback
+            CreateMap<SessionFeedback, SessionFeedbackDto>()
+                .ForMember(dest => dest.PatientName, opt => opt.MapFrom(src => src.Patient!.FullName))
+                .ForMember(dest => dest.DoctorId,    opt => opt.MapFrom(src => src.Consultation!.Appointment!.DoctorId))
+                .ForMember(dest => dest.DoctorName,  opt => opt.MapFrom(src => src.Consultation!.Appointment!.Doctor!.FullName))
+                .ForMember(dest => dest.RatingLabel, opt => opt.MapFrom(src =>
+                    src.Rating == 1 ? "Very Poor" :
+                    src.Rating == 2 ? "Poor" :
+                    src.Rating == 3 ? "Average" :
+                    src.Rating == 4 ? "Good" : "Excellent"));
         }
     }
 }

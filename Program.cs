@@ -61,6 +61,7 @@ namespace Axivora
             builder.Services.AddScoped<ILabTestService, LabTestService>();
             builder.Services.AddScoped<IDoctorScheduleService, DoctorScheduleService>();
             builder.Services.AddScoped<IMedicalHistoryService, MedicalHistoryService>();
+            builder.Services.AddScoped<IFeedbackService, FeedbackService>();
 
             // Register token service
             builder.Services.AddScoped<ITokenService, TokenService>();

@@ -1047,11 +1047,23 @@ namespace Axivora.Migrations
                     b.Navigation("User");
                 });
 
-            modelBuilder.Entity("Axivora.Models.Address", b =>
+            modelBuilder.Entity("Axivora.Models.SessionFeedback", b =>
                 {
-                    b.Navigation("Doctors");
+                    b.HasOne("Axivora.Models.Consultation", "Consultation")
+                        .WithOne("SessionFeedback")
+                        .HasForeignKey("Axivora.Models.SessionFeedback", "ConsultationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
-                    b.Navigation("Patients");
+                    b.HasOne("Axivora.Models.Patient", "Patient")
+                        .WithMany()
+                        .HasForeignKey("PatientId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Consultation");
+
+                    b.Navigation("Patient");
                 });
 
             modelBuilder.Entity("Axivora.Models.Appointment", b =>
@@ -1071,6 +1083,8 @@ namespace Axivora.Migrations
                     b.Navigation("PatientVitals");
 
                     b.Navigation("Prescriptions");
+
+                    b.Navigation("SessionFeedback");
                 });
 
             modelBuilder.Entity("Axivora.Models.Department", b =>

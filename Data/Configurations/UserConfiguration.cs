@@ -2,7 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using Axivora.Models;
 
-namespace Axivora.Configurations
+namespace Axivora.Data.Configurations
 {
     public class UserConfiguration : IEntityTypeConfiguration<User>
     {

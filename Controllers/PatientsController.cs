@@ -8,7 +8,7 @@ using Axivora.Services.Interfaces;
 namespace Axivora.Controllers
 {
     [ApiController]
-    [Route("api/[controller]")]
+    [Route("api/patients")]
     public class PatientsController : ControllerBase
     {
         private readonly IPatientService _patientService;

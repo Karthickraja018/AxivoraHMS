@@ -35,6 +35,9 @@ namespace Axivora.Data.Configurations
             builder.HasIndex(s => new { s.DoctorId, s.SlotStart })
                    .HasDatabaseName("IX_AppointmentSlots_DoctorId_SlotStart");
 
+            builder.HasIndex(s => s.Status)
+                   .HasDatabaseName("IX_AppointmentSlots_Status");
+
             builder.HasIndex(s => new { s.AvailabilityDayId, s.Status })
                    .HasDatabaseName("IX_AppointmentSlots_AvailabilityDayId_Status");
 

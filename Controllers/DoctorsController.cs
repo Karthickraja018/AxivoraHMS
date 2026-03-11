@@ -8,7 +8,7 @@ using Axivora.Helpers;
 namespace Axivora.Controllers
 {
     [ApiController]
-    [Route("api/[controller]")]
+    [Route("api/doctors")]
     [Authorize]
     public class DoctorsController : ControllerBase
     {

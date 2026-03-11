@@ -8,7 +8,7 @@ using Axivora.Services.Interfaces;
 namespace Axivora.Controllers
 {
     [ApiController]
-    [Route("api/[controller]")]
+    [Route("api/appointments")]
     [Authorize]
     public class AppointmentsController : ControllerBase
     {
@@ -20,8 +20,38 @@ namespace Axivora.Controllers
         }
 
         /// <summary>
-        /// Get all appointments with pagination (Admin and Doctor only).
-        /// Doctors automatically see only their own appointments.
+        /// Book an available slot. Patients only.
+        /// Creates an appointment and atomically marks the slot as Booked.
+        /// </summary>
+        [HttpPost]
+        [Authorize(Roles = "Patient")]
+        [ProducesResponseType(typeof(AppointmentDto), StatusCodes.Status201Created)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status409Conflict)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
+        public async Task<ActionResult<AppointmentDto>> BookAppointment(
+            [FromBody] CreateAppointmentDto dto)
+        {
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
+
+            var userId = int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+
+            try
+            {
+                var result = await _appointmentService.BookAsync(dto, userId);
+                return CreatedAtAction(nameof(GetAppointmentById), new { id = result.AppointmentId }, result);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Conflict(new { message = ex.Message });
+            }
+        }
+
+        /// <summary>
+        /// Get all appointments with pagination. Admin sees all; Doctors see their own.
         /// </summary>
         [HttpGet]
         [Authorize(Roles = "Admin,Doctor")]
@@ -46,7 +76,7 @@ namespace Axivora.Controllers
         /// <summary>
         /// Get appointment by ID. Ownership is enforced for Patient and Doctor roles.
         /// </summary>
-        [HttpGet("{id}")]
+        [HttpGet("{id:int}")]
         [ProducesResponseType(typeof(AppointmentDto), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status403Forbidden)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -54,9 +84,26 @@ namespace Axivora.Controllers
         public async Task<ActionResult<AppointmentDto>> GetAppointmentById(int id)
         {
             var userId = int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
-            var role = User.FindFirstValue(ClaimTypes.Role)!;
+            var role   = User.FindFirstValue(ClaimTypes.Role)!;
             var appointment = await _appointmentService.GetAppointmentByIdAsync(id, userId, role);
             return Ok(appointment);
+        }
+
+        /// <summary>
+        /// Get appointments for the currently authenticated patient with optional status filter.
+        /// </summary>
+        [HttpGet("me")]
+        [Authorize(Roles = "Patient")]
+        [ProducesResponseType(typeof(PaginationResponse<AppointmentDto>), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
+        public async Task<ActionResult<PaginationResponse<AppointmentDto>>> GetMyAppointments(
+            [FromQuery] PaginationParams paginationParams,
+            [FromQuery] string? status = null)
+        {
+            var userId = int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+            var appointments = await _appointmentService.GetMyAppointmentsAsync(userId, paginationParams, status);
+            return Ok(appointments);
         }
 
         /// <summary>
@@ -77,9 +124,43 @@ namespace Axivora.Controllers
         }
 
         /// <summary>
-        /// Update appointment status (Doctor and Admin only).
+        /// Reschedule an existing appointment to a different available slot.
         /// </summary>
-        [HttpPut("{id}/status")]
+        [HttpPatch("{id:int}/reschedule")]
+        [ProducesResponseType(typeof(AppointmentDto), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status409Conflict)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
+        public async Task<ActionResult<AppointmentDto>> RescheduleAppointment(
+            int id, [FromBody] RescheduleAppointmentDto dto)
+        {
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
+
+            var userId = int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+            var role   = User.FindFirstValue(ClaimTypes.Role)!;
+
+            try
+            {
+                var result = await _appointmentService.RescheduleAsync(id, dto, userId, role);
+                return Ok(result);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return StatusCode(StatusCodes.Status403Forbidden, new { message = ex.Message });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Conflict(new { message = ex.Message });
+            }
+        }
+
+        /// <summary>
+        /// Update appointment status. Doctor and Admin only.
+        /// </summary>
+        [HttpPatch("{id:int}/status")]
         [Authorize(Roles = "Admin,Doctor")]
         [ProducesResponseType(typeof(AppointmentDto), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -98,20 +179,27 @@ namespace Axivora.Controllers
         }
 
         /// <summary>
-        /// Get appointments for the currently authenticated patient with optional status filter.
+        /// Cancel (soft-delete) an appointment and release its slot. Patients, Doctors, and Admins.
         /// </summary>
-        [HttpGet("me")]
-        [Authorize(Roles = "Patient")]
-        [ProducesResponseType(typeof(PaginationResponse<AppointmentDto>), StatusCodes.Status200OK)]
-        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [HttpDelete("{id:int}")]
+        [ProducesResponseType(StatusCodes.Status204NoContent)]
         [ProducesResponseType(StatusCodes.Status403Forbidden)]
-        public async Task<ActionResult<PaginationResponse<AppointmentDto>>> GetMyAppointments(
-            [FromQuery] PaginationParams paginationParams,
-            [FromQuery] string? status = null)
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        public async Task<ActionResult> DeleteAppointment(int id)
         {
             var userId = int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
-            var appointments = await _appointmentService.GetMyAppointmentsAsync(userId, paginationParams, status);
-            return Ok(appointments);
+            var role   = User.FindFirstValue(ClaimTypes.Role)!;
+
+            try
+            {
+                await _appointmentService.DeleteAsync(id, userId, role);
+                return NoContent();
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return StatusCode(StatusCodes.Status403Forbidden, new { message = ex.Message });
+            }
         }
     }
 }

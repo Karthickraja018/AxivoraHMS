@@ -8,7 +8,7 @@ using Axivora.Services.Interfaces;
 namespace Axivora.Controllers
 {
     [ApiController]
-    [Route("api/[controller]")]
+    [Route("api/consultations")]
     [Authorize(Roles = "Doctor,Admin,Patient")]
     public class ConsultationsController : ControllerBase
     {

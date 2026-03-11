@@ -70,7 +70,7 @@ namespace Axivora
             builder.Services.AddScoped<IDoctorAvailabilityTemplateService, DoctorAvailabilityTemplateService>();
             builder.Services.AddScoped<IDoctorAvailabilityService, DoctorAvailabilityService>();
             builder.Services.AddScoped<ISlotService, SlotService>();
-            builder.Services.AddScoped<IAppointmentBookingService, AppointmentBookingService>();
+            builder.Services.AddHostedService<AvailabilityGenerationBackgroundService>();
 
             // Register Repositories
             builder.Services.AddScoped<IAppointmentRepository, AppointmentRepository>();
@@ -87,7 +87,6 @@ namespace Axivora
             builder.Services.AddScoped<IAvailabilityTemplateRepository, AvailabilityTemplateRepository>();
             builder.Services.AddScoped<IAvailabilityDayRepository, AvailabilityDayRepository>();
             builder.Services.AddScoped<IAppointmentSlotRepository, AppointmentSlotRepository>();
-            builder.Services.AddScoped<IAppointmentBookingRepository, AppointmentBookingRepository>();
 
             // Register token service
             builder.Services.AddScoped<ITokenService, TokenService>();

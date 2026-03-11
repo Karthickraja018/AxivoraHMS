@@ -6,7 +6,6 @@ using Axivora.Services.Interfaces;
 namespace Axivora.Controllers
 {
     [ApiController]
-    [Route("api/slots")]
     [Authorize]
     public class SlotController : ControllerBase
     {
@@ -18,30 +17,43 @@ namespace Axivora.Controllers
         }
 
         /// <summary>
-        /// Get all Available slots for a specific doctor on a given date.
+        /// Get a single slot's full detail by ID.
         /// </summary>
-        /// <param name="doctorId">The doctor whose slots to retrieve.</param>
-        /// <param name="date">Date in YYYY-MM-DD format.</param>
-        [HttpGet]
+        [HttpGet("api/slots/{slotId:int}")]
         [AllowAnonymous]
-        [ProducesResponseType(typeof(IEnumerable<SlotDto>), StatusCodes.Status200OK)]
-        [ProducesResponseType(StatusCodes.Status400BadRequest)]
-        public async Task<ActionResult<IEnumerable<SlotDto>>> GetAvailableSlots(
-            [FromQuery] int doctorId,
-            [FromQuery] DateOnly date)
+        [ProducesResponseType(typeof(SlotDetailDto), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        public async Task<ActionResult<SlotDetailDto>> GetSlotById(int slotId)
         {
-            if (doctorId <= 0)
-                return BadRequest(new { message = "A valid doctorId is required." });
-
-            var slots = await _slotService.GetAvailableSlotsAsync(doctorId, date);
-            return Ok(slots);
+            var slot = await _slotService.GetSlotDetailAsync(slotId);
+            return Ok(slot);
         }
 
         /// <summary>
-        /// Get available slots for a specific doctor on a given date.
-        /// Convenience route that mirrors GET /api/doctors/{doctorId}/slots?date=...
+        /// Update the status of a slot. Admin only.
+        /// Allowed values: Available, Booked, Blocked, Cancelled.
         /// </summary>
-        [HttpGet("/api/doctors/{doctorId}/slots")]
+        [HttpPatch("api/slots/{slotId:int}")]
+        [Authorize(Roles = "Admin")]
+        [ProducesResponseType(typeof(SlotDetailDto), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
+        public async Task<ActionResult<SlotDetailDto>> UpdateSlotStatus(
+            int slotId, [FromBody] UpdateSlotStatusDto dto)
+        {
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
+
+            var result = await _slotService.UpdateSlotStatusAsync(slotId, dto);
+            return Ok(result);
+        }
+
+        /// <summary>
+        /// Get available slots for a doctor on a specific date.
+        /// </summary>
+        [HttpGet("api/doctors/{doctorId:int}/slots")]
         [AllowAnonymous]
         [ProducesResponseType(typeof(IEnumerable<SlotDto>), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]

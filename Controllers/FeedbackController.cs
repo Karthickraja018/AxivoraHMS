@@ -7,7 +7,7 @@ using Axivora.Services.Interfaces;
 namespace Axivora.Controllers
 {
     [ApiController]
-    [Route("api/[controller]")]
+    [Route("api/feedback")]
     [Authorize]
     public class FeedbackController : ControllerBase
     {

@@ -34,6 +34,14 @@ namespace Axivora.Repositories
                 .OrderBy(d => d.Date)
                 .ToListAsync();
 
+        public async Task<IEnumerable<DoctorAvailabilityDay>> GetByDoctorAndDateRangeAsync(
+            int doctorId, DateOnly from, DateOnly to) =>
+            await _context.DoctorAvailabilityDays
+                .Include(d => d.Slots)
+                .Where(d => d.DoctorId == doctorId && d.Date >= from && d.Date <= to)
+                .OrderBy(d => d.Date)
+                .ToListAsync();
+
         public async Task<bool> ExistsAsync(int doctorId, DateOnly date) =>
             await _context.DoctorAvailabilityDays
                 .AnyAsync(d => d.DoctorId == doctorId && d.Date == date);

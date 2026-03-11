@@ -13,5 +13,7 @@ namespace Axivora.Repositories.Interfaces
         Task BeginTransactionAsync();
         Task CommitTransactionAsync();
         Task RollbackTransactionAsync();
+        Task<IEnumerable<AppointmentSlot>> GetSlotsByDoctorAndDateRangeAsync(int doctorId, DateOnly from, DateOnly to);
+        Task<IEnumerable<AppointmentSlot>> GetAvailableSlotsByDoctorAndDateRangeAsync(int doctorId, DateOnly from, DateOnly to);
     }
 }

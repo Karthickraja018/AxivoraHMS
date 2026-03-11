@@ -31,6 +31,119 @@ namespace Axivora.Services
             return _mapper.Map<IEnumerable<SlotDto>>(slots);
         }
 
+        public async Task<SlotDetailDto> GetSlotDetailAsync(int slotId)
+        {
+            var slot = await _slotRepository.GetByIdAsync(slotId)
+                ?? throw new KeyNotFoundException($"Slot with ID {slotId} not found.");
+
+            return new SlotDetailDto
+            {
+                SlotId        = slot.Id,
+                DoctorId      = slot.DoctorId,
+                SlotStart     = slot.SlotStart,
+                SlotEnd       = slot.SlotEnd,
+                Status        = slot.Status,
+                AppointmentId = slot.AppointmentId
+            };
+        }
+
+        public async Task<SlotDetailDto> UpdateSlotStatusAsync(int slotId, UpdateSlotStatusDto dto)
+        {
+            var slot = await _slotRepository.GetByIdAsync(slotId)
+                ?? throw new KeyNotFoundException($"Slot with ID {slotId} not found.");
+
+            slot.Status = dto.Status;
+            await _slotRepository.SaveChangesAsync();
+
+            _logger.LogInformation("Admin updated slot {SlotId} status to {Status}.", slotId, dto.Status);
+
+            return new SlotDetailDto
+            {
+                SlotId        = slot.Id,
+                DoctorId      = slot.DoctorId,
+                SlotStart     = slot.SlotStart,
+                SlotEnd       = slot.SlotEnd,
+                Status        = slot.Status,
+                AppointmentId = slot.AppointmentId
+            };
+        }
+
+        public async Task<IEnumerable<DoctorCalendarDayDto>> GetDoctorCalendarAsync(
+            int doctorId, DateOnly from, DateOnly to)
+        {
+            var slots = await _slotRepository.GetSlotsByDoctorAndDateRangeAsync(doctorId, from, to);
+            var days  = await _dayRepository.GetByDoctorAndDateRangeAsync(doctorId, from, to);
+
+            var dayStatusMap = days.ToDictionary(d => d.Date, d => d.Status);
+
+            var grouped = slots
+                .GroupBy(s => DateOnly.FromDateTime(s.SlotStart))
+                .ToDictionary(g => g.Key, g => g.ToList());
+
+            var result = new List<DoctorCalendarDayDto>();
+            for (var date = from; date <= to; date = date.AddDays(1))
+            {
+                grouped.TryGetValue(date, out var daySlots);
+                dayStatusMap.TryGetValue(date, out var dayStatus);
+
+                result.Add(new DoctorCalendarDayDto
+                {
+                    Date           = date,
+                    DayStatus      = dayStatus ?? "NoSchedule",
+                    TotalSlots     = daySlots?.Count ?? 0,
+                    AvailableSlots = daySlots?.Count(s => s.Status == SlotStatus.Available) ?? 0,
+                    BookedSlots    = daySlots?.Count(s => s.Status == SlotStatus.Booked) ?? 0
+                });
+            }
+
+            return result;
+        }
+
+        public async Task<IEnumerable<PatientAvailabilityPreviewDto>> GetAvailabilityPreviewAsync(
+            int doctorId, DateOnly from, DateOnly to)
+        {
+            var slots = await _slotRepository.GetAvailableSlotsByDoctorAndDateRangeAsync(doctorId, from, to);
+
+            var grouped = slots
+                .GroupBy(s => DateOnly.FromDateTime(s.SlotStart))
+                .ToDictionary(g => g.Key, g => g.Count());
+
+            var result = new List<PatientAvailabilityPreviewDto>();
+            for (var date = from; date <= to; date = date.AddDays(1))
+            {
+                result.Add(new PatientAvailabilityPreviewDto
+                {
+                    Date           = date,
+                    AvailableSlots = grouped.TryGetValue(date, out var count) ? count : 0
+                });
+            }
+
+            return result;
+        }
+
+        public async Task ApplyLeaveAsync(int doctorId, DoctorLeaveDto dto)
+        {
+            var days = await _dayRepository.GetByDoctorAndDateRangeAsync(doctorId, dto.From, dto.To);
+
+            if (!days.Any())
+                throw new KeyNotFoundException(
+                    $"No availability days found for doctor {doctorId} between {dto.From} and {dto.To}.");
+
+            foreach (var day in days)
+            {
+                day.Status = AvailabilityDayStatus.Leave;
+
+                foreach (var slot in day.Slots.Where(s => s.Status == SlotStatus.Available))
+                    slot.Status = SlotStatus.Blocked;
+            }
+
+            await _dayRepository.SaveChangesAsync();
+
+            _logger.LogInformation(
+                "Applied leave for doctor {DoctorId} from {From} to {To}. Reason: {Reason}",
+                doctorId, dto.From, dto.To, dto.Reason ?? "N/A");
+        }
+
         public async Task GenerateSlotsForDayAsync(int availabilityDayId)
         {
             // Idempotent — do nothing if slots already exist
@@ -64,19 +177,14 @@ namespace Axivora.Services
                 slots.Count, availabilityDayId, day.Date);
         }
 
-        // ?? Private helpers ??????????????????????????????????????????????????
+        // ?? Private helpers ???????????????????????????????????????????????????
 
-        /// <summary>
-        /// Builds AppointmentSlot objects from a DoctorAvailabilityDay.
-        /// Slots are aligned to SlotDurationMinutes boundaries from StartTime to EndTime.
-        /// </summary>
         private static List<AppointmentSlot> BuildSlots(DoctorAvailabilityDay day)
         {
-            var slots     = new List<AppointmentSlot>();
-            var slotSpan  = TimeSpan.FromMinutes(day.SlotDurationMinutes);
-            // Combine the calendar date with the time-of-day to produce a full DateTime (UTC)
-            var dayBase   = day.Date.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
-            var current   = day.StartTime;
+            var slots    = new List<AppointmentSlot>();
+            var slotSpan = TimeSpan.FromMinutes(day.SlotDurationMinutes);
+            var dayBase  = day.Date.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
+            var current  = day.StartTime;
 
             while (current + slotSpan <= day.EndTime)
             {

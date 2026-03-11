@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using Axivora.Data;
 using Axivora.Models;
 using Axivora.Repositories.Interfaces;
@@ -8,6 +9,7 @@ namespace Axivora.Repositories
     public class AppointmentRepository : IAppointmentRepository
     {
         private readonly AxivoraDbContext _context;
+        private IDbContextTransaction? _transaction;
 
         public AppointmentRepository(AxivoraDbContext context)
         {
@@ -123,6 +125,11 @@ namespace Axivora.Repositories
                 .ToListAsync();
         }
 
+        public async Task<AppointmentSlot?> GetSlotByIdAsync(int slotId) =>
+            await _context.AppointmentSlots
+                .Include(s => s.AvailabilityDay)
+                .FirstOrDefaultAsync(s => s.Id == slotId);
+
         public async Task AddAsync(Appointment appointment) =>
             await _context.Appointments.AddAsync(appointment);
 
@@ -131,5 +138,20 @@ namespace Axivora.Repositories
 
         public async Task SaveChangesAsync() =>
             await _context.SaveChangesAsync();
+
+        public async Task BeginTransactionAsync() =>
+            _transaction = await _context.Database.BeginTransactionAsync();
+
+        public async Task CommitTransactionAsync()
+        {
+            if (_transaction != null)
+                await _transaction.CommitAsync();
+        }
+
+        public async Task RollbackTransactionAsync()
+        {
+            if (_transaction != null)
+                await _transaction.RollbackAsync();
+        }
     }
 }

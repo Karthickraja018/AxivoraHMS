@@ -41,6 +41,27 @@ namespace Axivora.Repositories
             await _context.AppointmentSlots
                 .AnyAsync(s => s.AvailabilityDayId == availabilityDayId);
 
+        public async Task<IEnumerable<AppointmentSlot>> GetSlotsByDoctorAndDateRangeAsync(
+            int doctorId, DateOnly from, DateOnly to) =>
+            await _context.AppointmentSlots
+                .Include(s => s.AvailabilityDay)
+                .Where(s => s.DoctorId == doctorId &&
+                            s.AvailabilityDay!.Date >= from &&
+                            s.AvailabilityDay!.Date <= to)
+                .OrderBy(s => s.SlotStart)
+                .ToListAsync();
+
+        public async Task<IEnumerable<AppointmentSlot>> GetAvailableSlotsByDoctorAndDateRangeAsync(
+            int doctorId, DateOnly from, DateOnly to) =>
+            await _context.AppointmentSlots
+                .Include(s => s.AvailabilityDay)
+                .Where(s => s.DoctorId == doctorId &&
+                            s.AvailabilityDay!.Date >= from &&
+                            s.AvailabilityDay!.Date <= to &&
+                            s.Status == SlotStatus.Available)
+                .OrderBy(s => s.SlotStart)
+                .ToListAsync();
+
         public async Task AddRangeAsync(IEnumerable<AppointmentSlot> slots) =>
             await _context.AppointmentSlots.AddRangeAsync(slots);
 

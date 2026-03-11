@@ -16,6 +16,16 @@ namespace Axivora.DTOs
         public string Status { get; set; } = null!;
     }
 
+    public class CreateAppointmentDto
+    {
+        [Required]
+        [Range(1, int.MaxValue, ErrorMessage = "A valid slotId is required.")]
+        public int SlotId { get; set; }
+
+        [StringLength(500)]
+        public string? Reason { get; set; }
+    }
+
     public class UpdateAppointmentDto
     {
         public string? Reason { get; set; }
@@ -28,5 +38,12 @@ namespace Axivora.DTOs
     {
         [Required]
         public string Status { get; set; } = null!;
+    }
+
+    public class RescheduleAppointmentDto
+    {
+        [Required]
+        [Range(1, int.MaxValue, ErrorMessage = "A valid newSlotId is required.")]
+        public int NewSlotId { get; set; }
     }
 }

@@ -45,6 +45,10 @@ namespace Axivora.Data
         // Patient Feedback
         public DbSet<SessionFeedback> SessionFeedbacks { get; set; }
 
+        // Reporting Views
+        public DbSet<AppointmentReportView> AppointmentReports { get; set; }
+        public DbSet<DoctorWorkloadReportView> DoctorWorkloadReports { get; set; }
+
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);

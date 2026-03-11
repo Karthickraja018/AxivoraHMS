@@ -2,6 +2,7 @@ using AutoMapper;
 using Microsoft.EntityFrameworkCore;
 using Axivora.Data;
 using Axivora.DTOs;
+using Axivora.Helpers;
 using Axivora.Services.Interfaces;
 
 namespace Axivora.Services
@@ -75,6 +76,47 @@ namespace Axivora.Services
                 .ToListAsync();
 
             return orderedTests.Select(MapToLabResultDto);
+        }
+
+        /// <inheritdoc />
+        public async Task<PaginationResponse<LabTestCatalogueDto>> GetCatalogueAsync(
+            string? search, int pageNumber, int pageSize)
+        {
+            var query = _context.LabTests.AsQueryable();
+
+            if (!string.IsNullOrWhiteSpace(search))
+                query = query.Where(lt => lt.TestName.Contains(search));
+
+            var totalCount = await query.CountAsync();
+
+            var items = await query
+                .OrderBy(lt => lt.TestName)
+                .Skip((pageNumber - 1) * pageSize)
+                .Take(pageSize)
+                .Select(lt => new LabTestCatalogueDto
+                {
+                    LabTestId = lt.LabTestId,
+                    TestName  = lt.TestName
+                })
+                .ToListAsync();
+
+            return new PaginationResponse<LabTestCatalogueDto>(items, totalCount, pageNumber, pageSize);
+        }
+
+        /// <inheritdoc />
+        public async Task<LabTestCatalogueDto?> GetCatalogueItemAsync(int id)
+        {
+            var labTest = await _context.LabTests
+                .FirstOrDefaultAsync(lt => lt.LabTestId == id);
+
+            if (labTest is null)
+                return null;
+
+            return new LabTestCatalogueDto
+            {
+                LabTestId = labTest.LabTestId,
+                TestName  = labTest.TestName
+            };
         }
 
         private static LabResultDto MapToLabResultDto(Models.OrderedTest ot) => new()

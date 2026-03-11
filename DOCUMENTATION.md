@@ -1,6 +1,6 @@
 # Axivora HMS — REST API Documentation
 
-> **Version:** 1.2 · **Platform:** .NET 10 / C# 14 · **Auth:** JWT Bearer HS256
+> **Version:** 1.3 · **Platform:** .NET 10 / C# 14 · **Auth:** JWT Bearer HS256
 
 ---
 
@@ -19,9 +19,12 @@
 11. [Lab Test Endpoints](#11-lab-test-endpoints----apilab-tests)
 12. [Doctor Schedule Endpoints](#12-doctor-schedule-endpoints)
 13. [Medical History Endpoints](#13-medical-history-endpoints)
-14. [Appointment Status State Machine](#14-appointment-status-state-machine)
-15. [Data Schemas](#15-data-schemas)
-16. [Quick Reference](#16-quick-reference)
+14. [Feedback Endpoints](#14-feedback-endpoints----apifeedback)
+15. [Admin Report Endpoints](#15-admin-report-endpoints----apiadminreports)
+16. [Medicine Catalogue Endpoints](#16-medicine-catalogue-endpoints----apimedicines)
+17. [Appointment Status State Machine](#17-appointment-status-state-machine)
+18. [Data Schemas](#18-data-schemas)
+19. [Quick Reference](#19-quick-reference)
 
 ---
 
@@ -29,8 +32,8 @@
 
 Axivora HMS is a Hospital Management System REST API built with ASP.NET Core (.NET 10).  
 Endpoints cover: authentication, patient management, doctor management, appointment scheduling
-(with schedule-aware validation), clinical consultations (prescriptions + lab-test orders),
-lab test result management, doctor availability scheduling, and full patient medical history.
+(with schedule-aware booking validation and rescheduling), clinical consultations (prescriptions + lab-test orders),
+lab test result management, doctor availability scheduling, patient feedback, admin reporting, and full patient medical history.
 
 **Base URL**
 ```
@@ -97,7 +100,7 @@ Authorization: Bearer <token>
 |---|---|---|
 | `Patient` | Self-registered end users | `POST /api/auth/register` |
 | `Doctor` | Medical staff | `POST /api/doctors` (Admin only) |
-| `LabTechnician` | Lab staff who upload test results | Admin / manual DB insert |
+| `LabTechnician` | Lab staff | Admin / manual DB insert |
 | `Admin` | Full system access | Database seed / manual insert |
 
 ---
@@ -148,8 +151,6 @@ Paginated endpoints accept `pageNumber` (default `1`) and `pageSize` (default `1
 
 Register a new Patient user. Only the `Patient` role is accepted for self-registration.
 
-**Request Body**
-
 | Field | Type | Required | Description |
 |---|---|---|---|
 | `email` | `string` | Yes | Valid email (max 150 chars) |
@@ -167,19 +168,15 @@ Register a new Patient user. Only the `Patient` role is accepted for self-regist
 }
 ```
 
-**Responses**
-
 | Status | Description |
 |---|---|
 | 201 Created | Returns `AuthResponseDto` (includes `token` + `refreshToken`) |
-| 400 Bad Request | Validation error or email already registered or non-Patient role |
+| 400 Bad Request | Validation error, email already registered, or non-Patient role |
 
 ---
 
 ### `POST /api/auth/login`
 **Auth:** Public
-
-**Request Body**
 
 | Field | Type | Required | Description |
 |---|---|---|---|
@@ -190,8 +187,6 @@ Register a new Patient user. Only the `Patient` role is accepted for self-regist
 ```json
 { "email": "user@example.com", "password": "P@ssword1" }
 ```
-
-**Responses**
 
 | Status | Description |
 |---|---|
@@ -213,9 +208,7 @@ Register a new Patient user. Only the `Patient` role is accepted for self-regist
 ---
 
 ### `POST /api/auth/forgot-password`
-**Auth:** Public
-
-**Request Body:** `{ "email": "user@example.com" }`
+**Auth:** Public · Body: `{ "email": "user@example.com" }`
 
 | Status | Description |
 |---|---|
@@ -261,7 +254,7 @@ Implements **token rotation** — the supplied token is immediately revoked.
 ---
 
 ### `POST /api/auth/revoke-token`
-**Auth:** Public (token identity proven by possession)
+**Auth:** Public
 
 Revokes a refresh token, logging out that session. The JWT remains valid until it expires naturally.
 
@@ -491,14 +484,14 @@ Soft-delete (`IsDeleted = true`).
 
 ## 9. Appointment Endpoints — `/api/appointments`
 
-> **Booking validation:** When creating an appointment the service checks:
+> **Booking validation:** When creating an appointment the service verifies:
 > 1. No overlapping appointment exists for the same doctor in the requested time window.
-> 2. The requested time window falls within an **active** `DoctorSchedule` entry for that doctor on the same day-of-week (uses .NET's `DayOfWeek` — `0 = Sunday … 6 = Saturday`).
+> 2. The time window falls within an **active** `DoctorSchedule` entry for that day-of-week (uses .NET `DayOfWeek` — `0 = Sunday … 6 = Saturday`).
 >
-> **Ownership:** For `GET /{id}`, `PUT /{id}`, and `DELETE /{id}` the caller's identity is resolved from the JWT claim:
+> **Ownership** for `GET /{id}`, `PUT /{id}`, `PATCH /{id}/reschedule`, and `DELETE /{id}`:
 > - **Admin** — always allowed.
-> - **Doctor** — must be the appointment's doctor.
-> - **Patient** — must be the appointment's patient.
+> - **Doctor** — must be the appointment's assigned doctor (`UserId` ? `DoctorId`).
+> - **Patient** — must be the appointment's patient (`UserId` ? `PatientId`).
 >
 > **Audit:** When a Doctor or Admin creates an appointment an entry is written to `AuditLogs`.
 
@@ -508,7 +501,7 @@ Soft-delete (`IsDeleted = true`).
 **Auth:** Required — Admin / Doctor · Query: `pageNumber`, `pageSize`
 
 - **Admin** — returns all appointments (paginated, ordered by `AppointmentStart` desc).
-- **Doctor** — automatically returns **only that doctor's own appointments** (same as `GET /appointments/doctor/me`). The `doctorId` is resolved from the JWT `UserId` claim.
+- **Doctor** — automatically scoped to **their own appointments** (resolved from JWT `UserId`), ordered by `AppointmentStart` asc.
 
 Returns `PaginationResponse<AppointmentDto>`.
 
@@ -528,16 +521,16 @@ Returns `PaginationResponse<AppointmentDto>`.
 ### `GET /api/appointments/patient/{patientId}`
 **Auth:** Required — any authenticated user
 
-> **Patient restriction:** A Patient caller is forbidden unless `patientId` matches their own `PatientId` (resolved from JWT `UserId`).
+> **Patient restriction:** A Patient caller is forbidden unless `patientId` matches their own `PatientId`.
 
 Returns `IEnumerable<AppointmentDto>`.
 
 ---
 
 ### `GET /api/appointments/doctor/me`
-**Auth:** Required — Doctor only · Query: `pageNumber`, `pageSize`, `date` (optional `DateTime`)
+**Auth:** Required — Doctor only · Query: `pageNumber`, `pageSize`, `date` (optional `DateTime` UTC)
 
-Returns the authenticated doctor's own appointments, paginated and ordered by `AppointmentStart` ascending.  
+Returns the authenticated doctor's own appointments, ordered by `AppointmentStart` asc.  
 Pass `date` to filter to a single calendar day.
 
 Returns `PaginationResponse<AppointmentDto>`.
@@ -561,7 +554,7 @@ Returns `IEnumerable<AppointmentDto>` where `AppointmentStart` is within the ran
 ### `GET /api/appointments/me`
 **Auth:** Required — Patient only · Query: `pageNumber`, `pageSize`, `status` (optional string)
 
-Returns the authenticated patient's own appointments, paginated and ordered by `AppointmentStart` desc.  
+Returns the authenticated patient's own appointments, ordered by `AppointmentStart` desc.  
 Pass `status` to filter by status name (e.g. `"Scheduled"`). Pass `"all"` or omit to return every status.
 
 Returns `PaginationResponse<AppointmentDto>`.
@@ -603,10 +596,43 @@ Returns `PaginationResponse<AppointmentDto>`.
 
 ---
 
+### `PATCH /api/appointments/{id}/reschedule`
+**Auth:** Required — any authenticated user (ownership enforced)
+
+Moves an existing appointment to a new time window without changing any other fields.
+
+> **Allowed statuses:** Only appointments whose current status is **not** `Completed` or `Cancelled` can be rescheduled.  
+> **Slot conflict check:** The new window must not overlap any other non-deleted appointment for the same doctor.  
+> **Patient restriction:** A Patient caller may only reschedule their own appointment.
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `appointmentStart` | `DateTime` | Yes | New UTC start time |
+| `appointmentEnd` | `DateTime` | Yes | New UTC end time (must be after start — validated by `IValidatableObject`) |
+
+**Example**
+```json
+{
+  "appointmentStart": "2025-07-12T10:00:00",
+  "appointmentEnd":   "2025-07-12T10:30:00"
+}
+```
+
+| Status | Description |
+|---|---|
+| 200 OK | Returns updated `AppointmentDto` |
+| 400 Bad Request | `appointmentEnd` ? `appointmentStart` |
+| 401 Unauthorized | Token missing |
+| 403 Forbidden | Caller does not own the appointment |
+| 404 Not Found | Appointment not found or soft-deleted |
+| 409 Conflict | Doctor already has an overlapping appointment in the requested window |
+
+---
+
 ### `PUT /api/appointments/{id}/status`
 **Auth:** Required — Admin / Doctor only
 
-Transitions the appointment to a new named status. Validated against the [status state machine](#14-appointment-status-state-machine).
+Transitions the appointment to a new named status. Validated against the [status state machine](#17-appointment-status-state-machine).
 
 **Request Body:** `{ "status": "Confirmed" }`
 
@@ -654,12 +680,12 @@ Soft-deletes (`IsDeleted = true`) the appointment.
 
 ## 10. Consultation Endpoints — `/api/consultations`
 
-> **Controller-level auth:** Doctor, Admin, or Patient role required for all endpoints.  
+> **Controller-level auth:** Doctor, Admin, or Patient.  
 > Write endpoints (POST, PUT) are Doctor / Admin only.  
-> **Consultation creation rule:** The linked appointment must have a status of `Checked-In`, `In Progress`, or `Completed` — any other status is rejected with `400`.  
-> **Doctor ownership on create:** A Doctor caller can only create a consultation for an appointment assigned to them.  
+> **Status rule on create:** Linked appointment must have status `Checked-In`, `In Progress`, or `Completed`.  
+> **Doctor ownership on create:** A Doctor caller can only create a consultation for their own appointment.  
 > **Duplicate guard:** Only one consultation per appointment is allowed.  
-> **AppointmentId is immutable** after creation — PUT updates preserve the original value.  
+> **`appointmentId` is immutable** after creation — PUT updates preserve the original value.  
 > **Prescription duplicate guard:** The same medicine cannot be prescribed twice in one consultation.
 
 ---
@@ -674,7 +700,7 @@ Returns `PaginationResponse<ConsultationDto>` ordered by `CreatedAt` desc.
 ### `GET /api/consultations/doctor/me`
 **Auth:** Required — Doctor only · Query: `pageNumber`, `pageSize`
 
-Returns the authenticated doctor's own consultations, paginated and ordered by `CreatedAt` desc.
+Returns the authenticated doctor's own consultations, ordered by `CreatedAt` desc.
 
 Returns `PaginationResponse<ConsultationDto>`.
 
@@ -696,8 +722,6 @@ Returns `PaginationResponse<ConsultationDto>`.
 ### `GET /api/consultations/appointment/{appointmentId}`
 **Auth:** Required — Doctor / Admin / Patient
 
-Returns the consultation linked to a specific appointment.
-
 | Status | Description |
 |---|---|
 | 200 OK | Returns `ConsultationDto` |
@@ -708,7 +732,7 @@ Returns the consultation linked to a specific appointment.
 ### `GET /api/consultations/me`
 **Auth:** Required — Patient only · Query: `pageNumber`, `pageSize`
 
-Returns the authenticated patient's own consultations, paginated and ordered by `CreatedAt` desc.
+Returns the authenticated patient's own consultations, ordered by `CreatedAt` desc.
 
 Returns `PaginationResponse<ConsultationDto>`.
 
@@ -719,7 +743,7 @@ Returns `PaginationResponse<ConsultationDto>`.
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `appointmentId` | `int` | Yes | Linked appointment (must be `Checked-In`, `In Progress`, or `Completed`) |
+| `appointmentId` | `int` | Yes | Must be `Checked-In`, `In Progress`, or `Completed` |
 | `chiefComplaint` | `string` | No | Max 1000 chars |
 | `examination` | `string` | No | Max 1000 chars |
 | `diagnosisNotes` | `string` | No | Max 500 chars |
@@ -741,8 +765,7 @@ Returns `PaginationResponse<ConsultationDto>`.
 | Status | Description |
 |---|---|
 | 201 Created | Returns `ConsultationDto`; `Location` ? `GET /api/consultations/{id}` |
-| 400 Bad Request | Appointment status invalid, or consultation already exists for this appointment |
-| 401 Unauthorized | Token missing |
+| 400 Bad Request | Appointment status invalid, or consultation already exists |
 | 403 Forbidden | Doctor caller is not the appointment's assigned doctor |
 
 ---
@@ -750,7 +773,7 @@ Returns `PaginationResponse<ConsultationDto>`.
 ### `PUT /api/consultations/{id}`
 **Auth:** Required — Doctor / Admin
 
-`appointmentId` is **read-only** — any value in the body is ignored.
+`appointmentId` is **read-only** — any value sent in the body is silently ignored.
 
 | Field | Type | Description |
 |---|---|---|
@@ -770,14 +793,14 @@ Returns `PaginationResponse<ConsultationDto>`.
 ### `POST /api/consultations/{id}/prescriptions`
 **Auth:** Required — Doctor / Admin
 
-> Same medicine cannot be prescribed twice in the same consultation.
+> Same `medicineId` cannot appear twice in the same consultation.
 
 | Field | Type | Required | Description |
 |---|---|---|---|
 | `medicineId` | `int` | Yes | Existing Medicine catalog ID |
-| `dosage` | `string` | No | e.g. `"500 mg"` (max 50 chars) |
-| `frequency` | `string` | No | e.g. `"Twice daily"` (max 50 chars) |
-| `route` | `string` | No | e.g. `"Oral"` (max 50 chars) |
+| `dosage` | `string` | No | Max 50 chars |
+| `frequency` | `string` | No | Max 50 chars |
+| `route` | `string` | No | Max 50 chars |
 | `durationDays` | `int` | No | Number of days |
 | `instructions` | `string` | No | Max 200 chars |
 
@@ -810,11 +833,9 @@ Ordered test is created with `Status = "Pending"`.
 ---
 
 ### `PUT /api/lab-tests/{orderedTestId}/result`
-**Auth:** Required — Admin / LabTechnician
+**Auth:** Required — Admin / Doctor
 
 Uploads or updates the result for an ordered test and sets `ResultDate` to `UtcNow`.
-
-**Request Body**
 
 | Field | Type | Required | Description |
 |---|---|---|---|
@@ -827,12 +848,12 @@ Uploads or updates the result for an ordered test and sets `ResultDate` to `UtcN
 | 200 OK | Returns `LabResultDto` with updated `result` and `resultDate` |
 | 400 Bad Request | `result` field missing |
 | 404 Not Found | OrderedTest not found |
-| 403 Forbidden | Not Admin or LabTechnician |
+| 403 Forbidden | Not Admin or Doctor |
 
 ---
 
 ### `GET /api/lab-tests/patient/{patientId}`
-**Auth:** Required — Admin / Doctor / LabTechnician
+**Auth:** Required — Admin / Doctor
 
 Returns all lab test results for a patient across all consultations.
 
@@ -841,11 +862,32 @@ Returns `IEnumerable<LabResultDto>`.
 ---
 
 ### `GET /api/lab-tests/consultation/{consultationId}`
-**Auth:** Required — Admin / Doctor / LabTechnician
+**Auth:** Required — Admin / Doctor
 
 Returns all lab tests ordered during a specific consultation.
 
 Returns `IEnumerable<LabResultDto>`.
+
+---
+
+### `GET /api/lab-tests/catalogue`
+**Auth:** Required — Admin / Doctor / Patient · Query: `search` (optional), `pageNumber` (default `1`), `pageSize` (default `20`, max `100`)
+
+Queries the `LabTests` **catalogue** table (not ordered test results). Search is a case-insensitive partial match on `TestName`. Results are sorted alphabetically.
+
+Returns `PaginationResponse<LabTestCatalogueDto>`.
+
+---
+
+### `GET /api/lab-tests/catalogue/{id}`
+**Auth:** Required — Admin / Doctor / Patient
+
+Returns a single lab test catalogue entry by `LabTestId`.
+
+| Status | Description |
+|---|---|
+| 200 OK | Returns `LabTestCatalogueDto` |
+| 404 Not Found | No lab test with the given ID |
 
 ---
 
@@ -854,8 +896,8 @@ Returns `IEnumerable<LabResultDto>`.
 Routes are nested under `/api/doctors`.
 
 > **Overlap guard (create & update):** A new or updated schedule cannot overlap an existing **active** schedule for the same doctor on the same day-of-week.  
-> **Time validation:** `EndTime` must be after `StartTime` — otherwise `ArgumentException` (400).  
-> **Doctor ownership:** A Doctor caller can only update/delete their **own** schedule slots (resolved by matching JWT `UserId` ? `DoctorId`). Admin callers bypass this check.
+> **Time validation:** `EndTime` must be after `StartTime`.  
+> **Doctor ownership:** A Doctor caller can only update/delete their **own** schedule slots (matched by JWT `UserId` ? `DoctorId`). Admin bypasses this check.
 
 ---
 
@@ -881,8 +923,8 @@ Routes are nested under `/api/doctors`.
 
 | Status | Description |
 |---|---|
-| 201 Created | Returns `DoctorScheduleDto` with generated time slots |
-| 400 Bad Request | `EndTime <= StartTime`, overlap with existing schedule, or slot duration out of range |
+| 201 Created | Returns `DoctorScheduleDto` with `generatedSlots` |
+| 400 Bad Request | `endTime ? startTime` or overlap with existing schedule |
 | 404 Not Found | Doctor not found |
 | 403 Forbidden | Not Admin or Doctor |
 
@@ -891,12 +933,13 @@ Routes are nested under `/api/doctors`.
 ### `GET /api/doctors/{doctorId}/schedule`
 **Auth:** Public
 
-Returns all schedule slots for the doctor ordered by `DayOfWeek` then `StartTime`.  
+Returns all schedule slots ordered by `DayOfWeek` then `StartTime`.
+
 Returns `IEnumerable<DoctorScheduleDto>` (each includes `generatedSlots`).
 
 | Status | Description |
 |---|---|
-| 200 OK | Returns `IEnumerable<DoctorScheduleDto>` |
+| 200 OK | Returns schedule list |
 | 404 Not Found | Doctor not found |
 
 ---
@@ -917,7 +960,7 @@ All fields are optional — only provided fields are updated.
 | Status | Description |
 |---|---|
 | 200 OK | Returns updated `DoctorScheduleDto` |
-| 400 Bad Request | `EndTime <= StartTime` or would create overlap |
+| 400 Bad Request | `endTime ? startTime` or would create overlap |
 | 403 Forbidden | Doctor caller does not own this schedule |
 | 404 Not Found | Schedule not found |
 
@@ -958,22 +1001,225 @@ Returns a full chronological medical history including all visits, consultations
 ### `GET /api/patients/me/medical-history`
 **Auth:** Required — Patient only
 
-Returns the authenticated patient's own medical history.  
-`UserId` is resolved from the JWT claim — no path parameter needed.
+Returns the authenticated patient's own medical history. `UserId` is resolved from the JWT claim.
 
 | Status | Description |
 |---|---|
 | 200 OK | Returns `MedicalHistoryDto` |
 | 404 Not Found | Patient profile not found |
+
+---
+
+## 14. Feedback Endpoints — `/api/feedback`
+
+> **One feedback per consultation** — enforced by a UNIQUE constraint on `ConsultationId`.  
+> Feedback can only be submitted for consultations whose linked appointment has status **`Completed`**.  
+> Only the submitting Patient may edit or delete their own feedback (Admin can delete any).
+
+---
+
+### `POST /api/feedback`
+**Auth:** Required — Patient only
+
+Submit feedback for a completed consultation.
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `consultationId` | `int` | Yes | The completed consultation to rate |
+| `rating` | `int` | Yes | 1 (Very Poor) to 5 (Excellent) |
+| `comment` | `string` | No | Optional free text (max 1000 chars) |
+
+**Example**
+```json
+{
+  "consultationId": 12,
+  "rating": 5,
+  "comment": "Very professional and thorough."
+}
+```
+
+| Status | Description |
+|---|---|
+| 201 Created | Returns `SessionFeedbackDto`; `Location` ? `GET /api/feedback/consultation/{consultationId}` |
+| 400 Bad Request | Validation error |
+| 403 Forbidden | Consultation does not belong to the caller's patient record |
+| 404 Not Found | Consultation or patient profile not found |
+| 409 Conflict | Feedback already submitted for this consultation, or appointment is not `Completed` |
+
+---
+
+### `PUT /api/feedback/{feedbackId}`
+**Auth:** Required — Patient only (own feedback)
+
+Edit the `rating` and/or `comment` of existing feedback. Sets `isEdited = true` and `updatedAt = UtcNow`.
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `rating` | `int?` | No | 1–5 |
+| `comment` | `string?` | No | Max 1000 chars |
+
+| Status | Description |
+|---|---|
+| 200 OK | Returns updated `SessionFeedbackDto` |
+| 400 Bad Request | Validation error |
+| 403 Forbidden | Caller did not submit this feedback |
+| 404 Not Found | Feedback not found |
+
+---
+
+### `GET /api/feedback/consultation/{consultationId}`
+**Auth:** Required — Patient / Doctor / Admin
+
+| Caller | Access |
+|---|---|
+| **Admin** | Unrestricted |
+| **Doctor** | Only if the consultation belongs to their own appointment |
+| **Patient** | Only if they submitted the feedback |
+
+| Status | Description |
+|---|---|
+| 200 OK | Returns `SessionFeedbackDto` |
+| 403 Forbidden | Ownership check failed |
+| 404 Not Found | No feedback for this consultation |
+
+---
+
+### `GET /api/feedback/doctor/{doctorId}`
+**Auth:** Required — Admin / Doctor (own only)
+
+Returns all feedback for a doctor's consultations, ordered by `CreatedAt` desc.
+
+> A Doctor caller is restricted to their own `DoctorId` (matched via JWT `UserId`).
+
+Returns `IEnumerable<SessionFeedbackDto>`.
+
+| Status | Description |
+|---|---|
+| 200 OK | Returns feedback list |
+| 403 Forbidden | Doctor caller does not own this doctor ID |
+
+---
+
+### `GET /api/feedback/patient/{patientId}`
+**Auth:** Required — Admin / Patient (own only)
+
+Returns all feedback submitted by a patient, ordered by `CreatedAt` desc.
+
+> A Patient caller is restricted to their own `PatientId` (matched via JWT `UserId`).
+
+Returns `IEnumerable<SessionFeedbackDto>`.
+
+| Status | Description |
+|---|---|
+| 200 OK | Returns feedback list |
+| 403 Forbidden | Patient caller does not own this patient ID |
+
+---
+
+### `DELETE /api/feedback/{feedbackId}`
+**Auth:** Required — Patient (own) / Admin
+
+Hard-deletes the feedback record.
+
+| Status | Description |
+|---|---|
+| 204 No Content | Deleted successfully |
+| 403 Forbidden | Patient caller did not submit this feedback |
+| 404 Not Found | Feedback not found |
+
+---
+
+## 15. Admin Report Endpoints — `/api/admin/reports`
+
+> **All endpoints require the `Admin` role.**  
+> Reports are backed by pre-built SQL Server views (`vw_AppointmentReport`, `vw_DoctorWorkloadReport`).
+
+---
+
+### `GET /api/admin/reports/appointments`
+**Auth:** Required — Admin only
+
+Returns a paginated appointment report sourced from `vw_AppointmentReport`.  
+Results are ordered by `AppointmentStart` desc.
+
+**Query Parameters (`ReportFilterDto`)**
+
+| Parameter | Type | Description |
+|---|---|---|
+| `from` | `DateTime?` | Inclusive UTC lower bound on `AppointmentStart` |
+| `to` | `DateTime?` | Inclusive UTC upper bound on `AppointmentStart` |
+| `status` | `string?` | Exact match on status name (e.g. `Scheduled`, `Completed`, `Cancelled`) |
+| `doctorId` | `int?` | Restrict to a single doctor |
+| `pageNumber` | `int` | 1-based, default `1` |
+| `pageSize` | `int` | 1–100, default `20` |
+
+Returns `PaginationResponse<AppointmentReportDto>`.
+
+| Status | Description |
+|---|---|
+| 200 OK | Paginated report returned |
+| 400 Bad Request | Filter validation error |
+| 401 Unauthorized | Token missing |
+| 403 Forbidden | Not Admin |
+
+---
+
+### `GET /api/admin/reports/doctors`
+**Auth:** Required — Admin only · Query: `from` (DateTime? UTC), `to` (DateTime? UTC)
+
+Returns a workload summary for every active doctor from `vw_DoctorWorkloadReport`.  
+When `from`/`to` are provided only doctors with at least one appointment in that window are included.  
+Results are ordered alphabetically by doctor name.
+
+Returns `IEnumerable<DoctorWorkloadDto>`.
+
+| Status | Description |
+|---|---|
+| 200 OK | Workload report returned |
+| 401 Unauthorized | Token missing |
+| 403 Forbidden | Not Admin |
+
+---
+
+## 16. Medicine Catalogue Endpoints — `/api/medicines`
+
+> All endpoints require any valid JWT (Doctor, Admin, or Patient).
+
+---
+
+### `GET /api/medicines`
+**Auth:** Required — any authenticated user · Query: `search` (optional), `pageNumber` (default `1`), `pageSize` (default `20`, max `100`)
+
+Returns a paginated, alphabetically sorted list of medicines from the catalogue.  
+`search` is a case-insensitive partial match on `MedicineName` (e.g. `"para"` matches `"Paracetamol 500mg"`).
+
+Returns `PaginationResponse<MedicineDto>`.
+
+| Status | Description |
+|---|---|
+| 200 OK | Paginated medicine list returned |
 | 401 Unauthorized | Token missing |
 
 ---
 
-## 14. Appointment Status State Machine
+### `GET /api/medicines/{id}`
+**Auth:** Required — any authenticated user
+
+Returns a single medicine by `MedicineId`.
+
+| Status | Description |
+|---|---|
+| 200 OK | Returns `MedicineDto` |
+| 401 Unauthorized | Token missing |
+| 404 Not Found | Medicine not found |
+
+---
+
+## 17. Appointment Status State Machine
 
 Terminal states (`Completed`, `Cancelled`, `No-Show`) cannot be left once entered.
 
-| From ? To | Patient | Doctor | Admin |
+| Transition | Patient | Doctor | Admin |
 |---|:---:|:---:|:---:|
 | `Scheduled` ? `Confirmed` | ? | ? | ? |
 | `Confirmed` ? `Checked-In` | ? | ? | ? |
@@ -984,11 +1230,11 @@ Terminal states (`Completed`, `Cancelled`, `No-Show`) cannot be left once entere
 | Any non-terminal ? `Rescheduled` | ? | ? | ? |
 
 > Transitions not listed above are rejected with `400 Bad Request`.  
-> Attempting to move away from a terminal state also returns `400 Bad Request`.
+> Attempting to leave a terminal state also returns `400 Bad Request`.
 
 ---
 
-## 15. Data Schemas
+## 18. Data Schemas
 
 ### `AuthResponseDto`
 
@@ -1017,7 +1263,16 @@ Terminal states (`Completed`, `Cancelled`, `No-Show`) cannot be left once entere
 | `appointmentStart` | `DateTime` | UTC start time |
 | `appointmentEnd` | `DateTime` | UTC end time |
 | `reason` | `string` | Reason for visit |
-| `status` | `string` | e.g. `Scheduled` \| `Confirmed` \| `Checked-In` \| `In Progress` \| `Completed` \| `Cancelled` \| `No-Show` \| `Rescheduled` |
+| `status` | `string` | `Scheduled` \| `Confirmed` \| `Checked-In` \| `In Progress` \| `Completed` \| `Cancelled` \| `No-Show` \| `Rescheduled` |
+
+---
+
+### `RescheduleAppointmentDto`
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `appointmentStart` | `DateTime` | Yes | New UTC start time |
+| `appointmentEnd` | `DateTime` | Yes | New UTC end time — must be after `appointmentStart` |
 
 ---
 
@@ -1026,8 +1281,8 @@ Terminal states (`Completed`, `Cancelled`, `No-Show`) cannot be left once entere
 | Field | Type | Description |
 |---|---|---|
 | `consultationId` | `int` | Primary key |
-| `appointmentId` | `int` | Linked appointment ID |
-| `patientId` | `int` | Resolved patient ID (from appointment) |
+| `appointmentId` | `int` | Linked appointment ID (immutable) |
+| `patientId` | `int` | Resolved patient ID |
 | `chiefComplaint` | `string?` | Chief complaint |
 | `examination` | `string?` | Examination notes |
 | `diagnosisNotes` | `string?` | Diagnosis |
@@ -1036,6 +1291,92 @@ Terminal states (`Completed`, `Cancelled`, `No-Show`) cannot be left once entere
 | `createdAt` | `DateTime` | UTC creation timestamp |
 | `prescriptions` | `List<PrescriptionDto>` | Linked prescriptions |
 | `orderedTests` | `List<OrderedTestDto>` | Linked ordered lab tests |
+
+---
+
+### `SessionFeedbackDto`
+
+| Field | Type | Description |
+|---|---|---|
+| `feedbackId` | `int` | Primary key |
+| `consultationId` | `int` | Linked consultation ID |
+| `patientId` | `int` | Submitting patient ID |
+| `patientName` | `string` | Patient's full name |
+| `doctorId` | `int` | Doctor linked through the consultation's appointment |
+| `doctorName` | `string` | Doctor's full name |
+| `rating` | `int` | 1–5 numeric rating |
+| `ratingLabel` | `string` | `Very Poor` \| `Poor` \| `Average` \| `Good` \| `Excellent` |
+| `comment` | `string?` | Optional free-text comment (max 1000 chars) |
+| `createdAt` | `DateTime` | UTC submission timestamp |
+| `isEdited` | `bool` | `true` if the patient has edited their feedback |
+| `updatedAt` | `DateTime?` | UTC timestamp of last edit |
+
+---
+
+### `AppointmentReportDto`
+
+| Field | Type | Description |
+|---|---|---|
+| `appointmentId` | `int` | Primary key |
+| `appointmentStart` | `DateTime` | UTC start |
+| `appointmentEnd` | `DateTime` | UTC end |
+| `patientName` | `string` | Patient's full name |
+| `patientPhone` | `string?` | Patient's phone number |
+| `mrn` | `string` | Patient's Medical Record Number |
+| `doctorName` | `string` | Attending doctor's full name |
+| `departmentName` | `string?` | Doctor's department |
+| `statusName` | `string` | Appointment status |
+| `reason` | `string?` | Visit reason |
+| `hasConsultation` | `bool` | Whether a consultation record exists |
+
+---
+
+### `DoctorWorkloadDto`
+
+| Field | Type | Description |
+|---|---|---|
+| `doctorId` | `int` | Doctor primary key |
+| `doctorName` | `string` | Doctor's full name |
+| `qualification` | `string?` | Academic qualification |
+| `departmentName` | `string?` | Department |
+| `totalAppointments` | `int` | All non-deleted appointments |
+| `completedAppointments` | `int` | Appointments with `Completed` status |
+| `cancelledAppointments` | `int` | Appointments with `Cancelled` status |
+| `totalConsultations` | `int` | Consultation records linked to this doctor |
+
+---
+
+### `MedicineDto`
+
+| Field | Type | Description |
+|---|---|---|
+| `medicineId` | `int` | Primary key |
+| `medicineName` | `string` | Full name including strength (e.g. `Paracetamol 500mg`) |
+
+---
+
+### `LabTestCatalogueDto`
+
+| Field | Type | Description |
+|---|---|---|
+| `labTestId` | `int` | Primary key |
+| `testName` | `string` | Full test name (e.g. `Complete Blood Count (CBC)`) |
+
+---
+
+### `LabResultDto`
+
+| Field | Type | Description |
+|---|---|---|
+| `orderedTestId` | `int` | OrderedTest primary key |
+| `consultationId` | `int` | Linked consultation ID |
+| `labTestId` | `int` | Catalog lab test ID |
+| `testName` | `string` | Lab test name |
+| `status` | `string` | `Pending` \| `Completed` |
+| `result` | `string?` | Result text uploaded by Doctor/Admin |
+| `resultDate` | `DateTime?` | UTC date/time of upload |
+| `patientId` | `int` | Linked patient ID |
+| `patientName` | `string` | Patient's full name |
 
 ---
 
@@ -1056,40 +1397,24 @@ Terminal states (`Completed`, `Cancelled`, `No-Show`) cannot be left once entere
 
 ---
 
-### `LabResultDto`
-
-| Field | Type | Description |
-|---|---|---|
-| `orderedTestId` | `int` | OrderedTest primary key |
-| `consultationId` | `int` | Linked consultation ID |
-| `labTestId` | `int` | Catalog lab test ID |
-| `testName` | `string` | Lab test name |
-| `status` | `string` | `Pending` \| `Completed` |
-| `result` | `string?` | Result text uploaded by LabTechnician |
-| `resultDate` | `DateTime?` | UTC date/time of upload |
-| `patientId` | `int` | Linked patient ID |
-| `patientName` | `string` | Patient's full name |
-
----
-
 ### `MedicalHistoryDto`
 
 | Field | Type | Description |
 |---|---|---|
 | `patientId` | `int` | Patient primary key |
-| `patientName` | `string` | Patient's full name |
+| `patientName` | `string` | Full name |
 | `mrn` | `string` | Medical Record Number |
 | `dateOfBirth` | `DateOnly` | Date of birth |
 | `gender` | `string?` | Gender |
 | `bloodGroup` | `string?` | Blood group |
-| `allergies` | `List<string>` | List of allergy names |
+| `allergies` | `List<string>` | Allergy names |
 | `visits` | `List<MedicalVisitDto>` | Chronological visits |
 
 **`MedicalVisitDto`** (nested in `visits`)
 
 | Field | Type | Description |
 |---|---|---|
-| `appointmentId` | `int` | Appointment primary key |
+| `appointmentId` | `int` | Primary key |
 | `appointmentStart` | `DateTime` | UTC start |
 | `appointmentEnd` | `DateTime` | UTC end |
 | `reason` | `string?` | Visit reason |
@@ -1120,11 +1445,11 @@ Terminal states (`Completed`, `Cancelled`, `No-Show`) cannot be left once entere
 |---|---|---|
 | `prescriptionId` | `int` | Primary key |
 | `medicineName` | `string` | Medicine name from catalog |
-| `dosage` | `string?` | Dose amount e.g. `500 mg` |
+| `dosage` | `string?` | Dose e.g. `500 mg` |
 | `frequency` | `string?` | e.g. `Twice daily` |
 | `route` | `string?` | e.g. `Oral` |
 | `durationDays` | `int?` | Number of days |
-| `instructions` | `string?` | Additional instructions |
+| `instructions` | `string?` | Patient instructions |
 
 ---
 
@@ -1134,7 +1459,7 @@ Terminal states (`Completed`, `Cancelled`, `No-Show`) cannot be left once entere
 |---|---|---|
 | `doctorId` | `int` | Primary key |
 | `licenseNumber` | `string` | Unique medical license |
-| `fullName` | `string` | Doctor's full name |
+| `fullName` | `string` | Full name |
 | `qualification` | `string?` | Academic qualifications |
 | `experienceYears` | `int?` | Years of experience |
 | `isActive` | `bool` | Active flag |
@@ -1184,7 +1509,7 @@ Terminal states (`Completed`, `Cancelled`, `No-Show`) cannot be left once entere
 
 ---
 
-## 16. Quick Reference
+## 19. Quick Reference
 
 | Method | Route | Auth | Role(s) |
 |---|---|---|---|
@@ -1218,6 +1543,7 @@ Terminal states (`Completed`, `Cancelled`, `No-Show`) cannot be left once entere
 | GET | `/api/appointments/date-range` | Yes | Admin / Doctor |
 | GET | `/api/appointments/me` | Yes | Patient |
 | POST | `/api/appointments` | Yes | Any |
+| PATCH | `/api/appointments/{id}/reschedule` | Yes | Any (ownership enforced) |
 | PUT | `/api/appointments/{id}/status` | Yes | Admin / Doctor |
 | PUT | `/api/appointments/{id}` | Yes | Any (ownership enforced) |
 | DELETE | `/api/appointments/{id}` | Yes | Any (ownership enforced) |
@@ -1230,15 +1556,27 @@ Terminal states (`Completed`, `Cancelled`, `No-Show`) cannot be left once entere
 | PUT | `/api/consultations/{id}` | Yes | Doctor / Admin |
 | POST | `/api/consultations/{id}/prescriptions` | Yes | Doctor / Admin |
 | POST | `/api/consultations/{id}/lab-tests` | Yes | Doctor / Admin |
-| PUT | `/api/lab-tests/{orderedTestId}/result` | Yes | Admin / LabTechnician |
-| GET | `/api/lab-tests/patient/{patientId}` | Yes | Admin / Doctor / LabTechnician |
-| GET | `/api/lab-tests/consultation/{consultationId}` | Yes | Admin / Doctor / LabTechnician |
+| PUT | `/api/lab-tests/{orderedTestId}/result` | Yes | Admin / Doctor |
+| GET | `/api/lab-tests/patient/{patientId}` | Yes | Admin / Doctor |
+| GET | `/api/lab-tests/consultation/{consultationId}` | Yes | Admin / Doctor |
+| GET | `/api/lab-tests/catalogue` | Yes | Admin / Doctor / Patient |
+| GET | `/api/lab-tests/catalogue/{id}` | Yes | Admin / Doctor / Patient |
 | POST | `/api/doctors/{doctorId}/schedule` | Yes | Admin / Doctor |
 | GET | `/api/doctors/{doctorId}/schedule` | No | — |
 | PUT | `/api/doctors/schedule/{scheduleId}` | Yes | Admin / Doctor (own) |
 | DELETE | `/api/doctors/schedule/{scheduleId}` | Yes | Admin / Doctor (own) |
 | GET | `/api/patients/{patientId}/medical-history` | Yes | Admin / Doctor |
 | GET | `/api/patients/me/medical-history` | Yes | Patient |
+| POST | `/api/feedback` | Yes | Patient |
+| PUT | `/api/feedback/{feedbackId}` | Yes | Patient (own) |
+| GET | `/api/feedback/consultation/{consultationId}` | Yes | Patient (own) / Doctor (own) / Admin |
+| GET | `/api/feedback/doctor/{doctorId}` | Yes | Admin / Doctor (own) |
+| GET | `/api/feedback/patient/{patientId}` | Yes | Admin / Patient (own) |
+| DELETE | `/api/feedback/{feedbackId}` | Yes | Patient (own) / Admin |
+| GET | `/api/admin/reports/appointments` | Yes | Admin |
+| GET | `/api/admin/reports/doctors` | Yes | Admin |
+| GET | `/api/medicines` | Yes | Any |
+| GET | `/api/medicines/{id}` | Yes | Any |
 
 ---
 

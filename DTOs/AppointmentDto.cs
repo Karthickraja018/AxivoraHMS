@@ -54,4 +54,25 @@ namespace Axivora.DTOs
         [Required]
         public string Status { get; set; } = null!;
     }
+
+    /// <summary>Payload for rescheduling an existing appointment to a new time window.</summary>
+    public class RescheduleAppointmentDto : IValidatableObject
+    {
+        /// <summary>New start date and time for the appointment (UTC).</summary>
+        [Required(ErrorMessage = "AppointmentStart is required.")]
+        public DateTime AppointmentStart { get; set; }
+
+        /// <summary>New end date and time for the appointment (UTC).</summary>
+        [Required(ErrorMessage = "AppointmentEnd is required.")]
+        public DateTime AppointmentEnd { get; set; }
+
+        /// <inheritdoc />
+        public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
+        {
+            if (AppointmentEnd <= AppointmentStart)
+                yield return new ValidationResult(
+                    "AppointmentEnd must be after AppointmentStart.",
+                    [nameof(AppointmentEnd)]);
+        }
+    }
 }

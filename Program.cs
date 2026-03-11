@@ -59,9 +59,11 @@ namespace Axivora
             builder.Services.AddScoped<IAppointmentService, AppointmentService>();
             builder.Services.AddScoped<IConsultationService, ConsultationService>();
             builder.Services.AddScoped<ILabTestService, LabTestService>();
+            builder.Services.AddScoped<IMedicineService, MedicineService>();
             builder.Services.AddScoped<IDoctorScheduleService, DoctorScheduleService>();
             builder.Services.AddScoped<IMedicalHistoryService, MedicalHistoryService>();
             builder.Services.AddScoped<IFeedbackService, FeedbackService>();
+            builder.Services.AddScoped<IAdminReportService, AdminReportService>();
 
             // Register token service
             builder.Services.AddScoped<ITokenService, TokenService>();
@@ -70,7 +72,12 @@ namespace Axivora
 
             // Add Swagger/OpenAPI
             builder.Services.AddEndpointsApiExplorer();
-            builder.Services.AddSwaggerGen();
+            builder.Services.AddSwaggerGen(options =>
+            {
+                var xmlFile = $"{System.Reflection.Assembly.GetExecutingAssembly().GetName().Name}.xml";
+                var xmlPath = Path.Combine(AppContext.BaseDirectory, xmlFile);
+                options.IncludeXmlComments(xmlPath, includeControllerXmlComments: true);
+            });
 
             var app = builder.Build();
 

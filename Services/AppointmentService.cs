@@ -439,5 +439,56 @@ namespace Axivora.Services
             if (patient == null || appointment.PatientId != patient.PatientId)
                 throw new UnauthorizedAccessException("You do not have permission to access this appointment.");
         }
+
+        /// <inheritdoc />
+        public async Task<AppointmentDto?> RescheduleAsync(
+            int id, RescheduleAppointmentDto dto, int currentUserId, string role)
+        {
+            // a. Fetch — return null if not found
+            var appointment = await _context.Appointments
+                .Include(a => a.Status)
+                .FirstOrDefaultAsync(a => a.AppointmentId == id && !a.IsDeleted);
+
+            if (appointment is null)
+                return null;
+
+            // b. Ownership check for patients
+            if (role == "Patient")
+            {
+                var patient = await _context.Patients
+                    .FirstOrDefaultAsync(p => p.UserId == currentUserId && !p.IsDeleted);
+
+                if (patient is null || appointment.PatientId != patient.PatientId)
+                    throw new UnauthorizedAccessException(
+                        "You do not have permission to reschedule this appointment.");
+            }
+
+            // c. Status check — only Scheduled (1) or Confirmed (2) may be rescheduled
+            var statusName = appointment.Status?.StatusName ?? string.Empty;
+            if (statusName is "Completed" or "Cancelled")
+                throw new InvalidOperationException(
+                    "Cannot reschedule a completed or cancelled appointment.");
+
+            // d. Slot conflict check
+            var conflict = await _context.Appointments
+                .AnyAsync(a =>
+                    a.DoctorId == appointment.DoctorId &&
+                    a.AppointmentId != id &&
+                    !a.IsDeleted &&
+                    a.AppointmentStart < dto.AppointmentEnd &&
+                    a.AppointmentEnd   > dto.AppointmentStart);
+
+            if (conflict)
+                throw new InvalidOperationException(
+                    "The requested time slot is already taken by another appointment for this doctor.");
+
+            // e. Apply changes
+            appointment.AppointmentStart = dto.AppointmentStart;
+            appointment.AppointmentEnd   = dto.AppointmentEnd;
+
+            await _context.SaveChangesAsync();
+
+            return await GetAppointmentByIdAsync(id);
+        }
     }
 }

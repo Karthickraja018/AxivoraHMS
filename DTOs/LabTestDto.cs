@@ -21,4 +21,14 @@ namespace Axivora.DTOs
         [StringLength(2000)]
         public string Result { get; set; } = null!;
     }
+
+    /// <summary>Read-only lab test catalogue entry.</summary>
+    public class LabTestCatalogueDto
+    {
+        /// <summary>Unique lab test identifier.</summary>
+        public int LabTestId { get; set; }
+
+        /// <summary>Full test name (e.g. Complete Blood Count (CBC)).</summary>
+        public string TestName { get; set; } = null!;
+    }
 }

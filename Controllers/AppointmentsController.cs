@@ -203,6 +203,65 @@ namespace Axivora.Controllers
         }
 
         /// <summary>
+        /// Reschedule an appointment to a new time window.
+        /// </summary>
+        /// <remarks>
+        /// Only appointments with status <c>Scheduled</c> or <c>Confirmed</c> can be rescheduled.
+        /// Patients may only reschedule their own appointments.
+        /// Doctors and Admins may reschedule any appointment they have access to.
+        ///
+        /// **409 Conflict** is returned when the doctor already has another non-deleted appointment
+        /// whose time window overlaps with the requested <c>AppointmentStart</c>–<c>AppointmentEnd</c> range.
+        /// </remarks>
+        /// <param name="id">The appointment to reschedule.</param>
+        /// <param name="dto">The new start and end date-times (UTC).</param>
+        /// <response code="200">Appointment rescheduled successfully.</response>
+        /// <response code="400">Validation error — end must be after start.</response>
+        /// <response code="401">JWT token is missing or invalid.</response>
+        /// <response code="403">Caller is not the owner of this appointment.</response>
+        /// <response code="404">No appointment with the given ID exists (or it is soft-deleted).</response>
+        /// <response code="409">
+        /// The doctor already has an appointment that overlaps the requested time window.
+        /// Choose a different time slot.
+        /// </response>
+        [HttpPatch("{id}/reschedule")]
+        [Authorize]
+        [ProducesResponseType(typeof(AppointmentDto), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status409Conflict)]
+        public async Task<ActionResult<AppointmentDto>> RescheduleAppointment(
+            int id, [FromBody] RescheduleAppointmentDto dto)
+        {
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
+
+            var userId = int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+            var role   = User.FindFirstValue(ClaimTypes.Role)!;
+
+            try
+            {
+                var result = await _appointmentService.RescheduleAsync(id, dto, userId, role);
+
+                if (result is null)
+                    return NotFound();
+
+                return Ok(result);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return StatusCode(StatusCodes.Status403Forbidden, new { message = ex.Message });
+            }
+            catch (InvalidOperationException ex) when (
+                ex.Message.Contains("already taken") || ex.Message.Contains("overlaps"))
+            {
+                return Conflict(new { message = ex.Message });
+            }
+        }
+
+        /// <summary>
         /// Get appointments for the currently authenticated patient, with optional status filter and pagination.
         /// </summary>
         [HttpGet("me")]

@@ -52,18 +52,6 @@ namespace Axivora.Repositories
                 .Where(a => a.AppointmentStart >= startDate && a.AppointmentStart <= endDate)
                 .ToListAsync();
 
-        public async Task<bool> HasConflictAsync(int doctorId, DateTime start, DateTime end, int? excludeAppointmentId = null)
-        {
-            var query = _context.Appointments
-                .Where(a => a.DoctorId == doctorId && !a.IsDeleted &&
-                    a.AppointmentStart < end && a.AppointmentEnd > start);
-
-            if (excludeAppointmentId.HasValue)
-                query = query.Where(a => a.AppointmentId != excludeAppointmentId.Value);
-
-            return await query.AnyAsync();
-        }
-
         public async Task<bool> DoctorExistsAsync(int doctorId) =>
             await _context.Doctors
                 .IgnoreQueryFilters()
@@ -133,20 +121,6 @@ namespace Axivora.Repositories
                 .OrderBy(a => a.AppointmentStart)
                 .Skip(skip).Take(take)
                 .ToListAsync();
-        }
-
-        public async Task<bool> IsWithinDoctorScheduleAsync(int doctorId, DateTime start, DateTime end)
-        {
-            var requestedDay = (int)start.DayOfWeek;
-            var requestedStart = start.TimeOfDay;
-            var requestedEnd = end.TimeOfDay;
-
-            var schedules = await _context.DoctorSchedules
-                .Where(s => s.DoctorId == doctorId && s.IsActive && s.DayOfWeek == requestedDay)
-                .Select(s => new { s.StartTime, s.EndTime })
-                .ToListAsync();
-
-            return schedules.Any(s => s.StartTime <= requestedStart && s.EndTime >= requestedEnd);
         }
 
         public async Task AddAsync(Appointment appointment) =>

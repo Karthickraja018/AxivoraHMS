@@ -60,11 +60,6 @@ namespace Axivora.Data.Configurations
                    .HasForeignKey(dd => dd.DoctorId)
                    .OnDelete(DeleteBehavior.Cascade);
 
-            builder.HasMany(d => d.DoctorSchedules)
-                   .WithOne(ds => ds.Doctor)
-                   .HasForeignKey(ds => ds.DoctorId)
-                   .OnDelete(DeleteBehavior.Cascade);
-
             builder.HasMany(d => d.Appointments)
                    .WithOne(apt => apt.Doctor)
                    .HasForeignKey(apt => apt.DoctorId)

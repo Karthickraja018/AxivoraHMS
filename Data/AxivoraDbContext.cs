@@ -24,7 +24,6 @@ namespace Axivora.Data
         public DbSet<DoctorDepartment> DoctorDepartments { get; set; }
 
         // Scheduling & Visits
-        public DbSet<DoctorSchedule> DoctorSchedules { get; set; }
         public DbSet<DoctorAvailabilityTemplate> DoctorAvailabilityTemplates { get; set; }
         public DbSet<DoctorAvailabilityDay> DoctorAvailabilityDays { get; set; }
         public DbSet<AppointmentSlot> AppointmentSlots { get; set; }

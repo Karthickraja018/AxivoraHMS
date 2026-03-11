@@ -11,7 +11,6 @@ namespace Axivora.Repositories.Interfaces
         Task<IEnumerable<Appointment>> GetByPatientIdAsync(int patientId);
         Task<IEnumerable<Appointment>> GetByDoctorIdAsync(int doctorId);
         Task<IEnumerable<Appointment>> GetByDateRangeAsync(DateTime startDate, DateTime endDate);
-        Task<bool> HasConflictAsync(int doctorId, DateTime start, DateTime end, int? excludeAppointmentId = null);
         Task<bool> DoctorExistsAsync(int doctorId);
         Task<bool> PatientExistsAsync(int patientId);
         Task<bool> StatusExistsAsync(int statusId);
@@ -23,7 +22,6 @@ namespace Axivora.Repositories.Interfaces
         Task<IEnumerable<Appointment>> GetPagedByPatientAsync(int patientId, string? status, int skip, int take);
         Task<int> CountByDoctorAsync(int doctorId, DateTime? date);
         Task<IEnumerable<Appointment>> GetPagedByDoctorAsync(int doctorId, DateTime? date, int skip, int take);
-        Task<bool> IsWithinDoctorScheduleAsync(int doctorId, DateTime start, DateTime end);
         Task AddAsync(Appointment appointment);
         Task AddAuditLogAsync(AuditLog auditLog);
         Task SaveChangesAsync();

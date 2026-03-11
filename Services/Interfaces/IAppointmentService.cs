@@ -1,5 +1,4 @@
 using Axivora.DTOs;
-using Axivora.Models;
 using Axivora.Helpers;
 
 namespace Axivora.Services.Interfaces
@@ -12,8 +11,6 @@ namespace Axivora.Services.Interfaces
         Task<AppointmentDto> GetAppointmentByIdAsync(int appointmentId, int callerUserId, string callerRole);
         Task<IEnumerable<AppointmentDto>> GetAppointmentsByPatientIdAsync(int patientId);
         Task<IEnumerable<AppointmentDto>> GetAppointmentsByDoctorIdAsync(int doctorId);
-        Task<AppointmentDto> CreateAppointmentAsync(CreateAppointmentDto createAppointmentDto);
-        Task<AppointmentDto> CreateAppointmentAsync(CreateAppointmentDto createAppointmentDto, int callerUserId, string callerRole);
         Task<AppointmentDto> UpdateAppointmentAsync(int appointmentId, UpdateAppointmentDto updateAppointmentDto);
         Task<AppointmentDto> UpdateAppointmentAsync(int appointmentId, UpdateAppointmentDto updateAppointmentDto, int callerUserId, string callerRole);
         Task<bool> CancelAppointmentAsync(int appointmentId);
@@ -23,6 +20,5 @@ namespace Axivora.Services.Interfaces
         Task<PaginationResponse<AppointmentDto>> GetDoctorAppointmentsAsync(int userId, PaginationParams paginationParams, DateTime? date);
         Task<AppointmentDto> UpdateAppointmentStatusAsync(int appointmentId, string statusName);
         Task<AppointmentDto> UpdateAppointmentStatusAsync(int appointmentId, string statusName, string callerRole);
-        Task<AppointmentDto?> RescheduleAsync(int id, RescheduleAppointmentDto dto, int currentUserId, string role);
     }
 }

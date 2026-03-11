@@ -72,63 +72,6 @@ namespace Axivora.Services
             return _mapper.Map<IEnumerable<AppointmentDto>>(appointments);
         }
 
-        public async Task<AppointmentDto> CreateAppointmentAsync(CreateAppointmentDto createAppointmentDto)
-        {
-            if (!await _repository.DoctorExistsAsync(createAppointmentDto.DoctorId))
-                throw new KeyNotFoundException($"Doctor with ID {createAppointmentDto.DoctorId} not found.");
-
-            if (!await _repository.PatientExistsAsync(createAppointmentDto.PatientId))
-                throw new KeyNotFoundException($"Patient with ID {createAppointmentDto.PatientId} not found.");
-
-            if (!await _repository.StatusExistsAsync(createAppointmentDto.StatusId))
-                throw new KeyNotFoundException($"Appointment status with ID {createAppointmentDto.StatusId} not found.");
-
-            if (await _repository.HasConflictAsync(createAppointmentDto.DoctorId, createAppointmentDto.AppointmentStart, createAppointmentDto.AppointmentEnd))
-                throw new InvalidOperationException("Doctor already has an appointment during this time slot.");
-
-            if (!await _repository.IsWithinDoctorScheduleAsync(createAppointmentDto.DoctorId, createAppointmentDto.AppointmentStart, createAppointmentDto.AppointmentEnd))
-                throw new InvalidOperationException("The requested time slot does not fall within the doctor's scheduled working hours.");
-
-            var appointment = _mapper.Map<Appointment>(createAppointmentDto);
-            appointment.CreatedAt = DateTime.UtcNow;
-            appointment.IsDeleted = false;
-
-            await _repository.AddAsync(appointment);
-            await _repository.SaveChangesAsync();
-
-            return await GetAppointmentByIdAsync(appointment.AppointmentId);
-        }
-
-        public async Task<AppointmentDto> CreateAppointmentAsync(CreateAppointmentDto createAppointmentDto, int callerUserId, string callerRole)
-        {
-            if (callerRole == "Patient")
-            {
-                var callerPatient = await _repository.GetPatientByUserIdAsync(callerUserId);
-
-                if (callerPatient == null)
-                    throw new KeyNotFoundException("Patient profile not found. Please complete your profile first.");
-
-                createAppointmentDto.PatientId = callerPatient.PatientId;
-            }
-
-            var result = await CreateAppointmentAsync(createAppointmentDto);
-
-            if (callerRole is "Doctor" or "Admin")
-            {
-                await _repository.AddAuditLogAsync(new AuditLog
-                {
-                    UserId = callerUserId,
-                    Action = "CreateAppointment",
-                    EntityName = "Appointment",
-                    EntityId = result.AppointmentId,
-                    NewValue = $"PatientId={result.PatientId}, DoctorId={result.DoctorId}, Start={result.AppointmentStart:O}"
-                });
-                await _repository.SaveChangesAsync();
-            }
-
-            return result;
-        }
-
         public async Task<AppointmentDto> UpdateAppointmentAsync(int appointmentId, UpdateAppointmentDto updateAppointmentDto)
         {
             var appointment = await _repository.GetByIdAsync(appointmentId);
@@ -277,36 +220,6 @@ namespace Axivora.Services
             await _repository.SaveChangesAsync();
 
             return await GetAppointmentByIdAsync(appointmentId);
-        }
-
-        public async Task<AppointmentDto?> RescheduleAsync(int id, RescheduleAppointmentDto dto, int currentUserId, string role)
-        {
-            var appointment = await _repository.GetByIdAsync(id);
-
-            if (appointment is null)
-                return null;
-
-            if (role == "Patient")
-            {
-                var patient = await _repository.GetPatientByUserIdAsync(currentUserId);
-
-                if (patient is null || appointment.PatientId != patient.PatientId)
-                    throw new UnauthorizedAccessException("You do not have permission to reschedule this appointment.");
-            }
-
-            var statusName = appointment.Status?.StatusName ?? string.Empty;
-            if (statusName is "Completed" or "Cancelled")
-                throw new InvalidOperationException("Cannot reschedule a completed or cancelled appointment.");
-
-            if (await _repository.HasConflictAsync(appointment.DoctorId, dto.AppointmentStart, dto.AppointmentEnd, id))
-                throw new InvalidOperationException("The requested time slot is already taken by another appointment for this doctor.");
-
-            appointment.AppointmentStart = dto.AppointmentStart;
-            appointment.AppointmentEnd = dto.AppointmentEnd;
-
-            await _repository.SaveChangesAsync();
-
-            return await GetAppointmentByIdAsync(id);
         }
 
         private async Task EnforceOwnershipAsync(Appointment appointment, int callerUserId, string callerRole)

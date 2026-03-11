@@ -31,12 +31,9 @@ namespace Axivora.Mappings
                 .ForAllMembers(opts => opts.Condition((src, dest, srcMember) => srcMember != null));
 
             CreateMap<Appointment, AppointmentDto>()
-                .ForMember(dest => dest.PatientName, opt => opt.MapFrom(src => src.Patient.FullName))
-                .ForMember(dest => dest.DoctorName, opt => opt.MapFrom(src => src.Doctor.FullName))
-                .ForMember(dest => dest.Status, opt => opt.MapFrom(src => src.Status.StatusName));
-            CreateMap<CreateAppointmentDto, Appointment>()
-                .ForMember(dest => dest.CreatedAt, opt => opt.Ignore())
-                .ForMember(dest => dest.IsDeleted, opt => opt.Ignore());
+                .ForMember(dest => dest.PatientName, opt => opt.MapFrom(src => src.Patient!.FullName))
+                .ForMember(dest => dest.DoctorName,  opt => opt.MapFrom(src => src.Doctor!.FullName))
+                .ForMember(dest => dest.Status,      opt => opt.MapFrom(src => src.Status!.StatusName));
             CreateMap<UpdateAppointmentDto, Appointment>()
                 .ForAllMembers(opts => opts.Condition((src, dest, srcMember) => srcMember != null));
 

@@ -63,7 +63,6 @@ namespace Axivora
             builder.Services.AddScoped<IConsultationService, ConsultationService>();
             builder.Services.AddScoped<ILabTestService, LabTestService>();
             builder.Services.AddScoped<IMedicineService, MedicineService>();
-            builder.Services.AddScoped<IDoctorScheduleService, DoctorScheduleService>();
             builder.Services.AddScoped<IMedicalHistoryService, MedicalHistoryService>();
             builder.Services.AddScoped<IFeedbackService, FeedbackService>();
             builder.Services.AddScoped<IAdminReportService, AdminReportService>();
@@ -79,7 +78,6 @@ namespace Axivora
             builder.Services.AddScoped<IDoctorRepository, DoctorRepository>();
             builder.Services.AddScoped<IPatientRepository, PatientRepository>();
             builder.Services.AddScoped<IConsultationRepository, ConsultationRepository>();
-            builder.Services.AddScoped<IDoctorScheduleRepository, DoctorScheduleRepository>();
             builder.Services.AddScoped<IMedicalHistoryRepository, MedicalHistoryRepository>();
             builder.Services.AddScoped<IFeedbackRepository, FeedbackRepository>();
             builder.Services.AddScoped<ILabTestRepository, LabTestRepository>();

@@ -63,28 +63,6 @@ namespace Axivora.Controllers
         }
 
         /// <summary>
-        /// Verify email with verification code
-        /// </summary>
-        [HttpPost("verify-email")]
-        [ProducesResponseType(StatusCodes.Status200OK)]
-        [ProducesResponseType(StatusCodes.Status400BadRequest)]
-        public async Task<IActionResult> VerifyEmail([FromQuery] string email, [FromQuery] string code)
-        {
-            try
-            {
-                var result = await _authService.VerifyEmailAsync(email, code);
-                if (result)
-                    return Ok(new { message = "Email verified successfully" });
-                
-                return BadRequest(new { message = "Invalid verification code" });
-            }
-            catch (KeyNotFoundException ex)
-            {
-                return NotFound(new { message = ex.Message });
-            }
-        }
-
-        /// <summary>
         /// Request password reset
         /// </summary>
         [HttpPost("forgot-password")]

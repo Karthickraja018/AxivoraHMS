@@ -48,25 +48,5 @@ namespace Axivora.Controllers
             var result = await _medicineService.GetAllAsync(search, pageNumber, pageSize);
             return Ok(result);
         }
-
-        /// <summary>
-        /// Returns a single medicine by its identifier.
-        /// </summary>
-        /// <param name="id">The <c>MedicineId</c> to retrieve.</param>
-        /// <response code="200">Medicine found and returned.</response>
-        /// <response code="401">JWT token is missing or invalid.</response>
-        /// <response code="404">No medicine exists with the given identifier.</response>
-        [HttpGet("{id:int}")]
-        [ProducesResponseType(typeof(MedicineDto), StatusCodes.Status200OK)]
-        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-        [ProducesResponseType(StatusCodes.Status404NotFound)]
-        public async Task<ActionResult<MedicineDto>> GetById(int id)
-        {
-            var medicine = await _medicineService.GetByIdAsync(id);
-            if (medicine is null)
-                return NotFound();
-
-            return Ok(medicine);
-        }
     }
 }

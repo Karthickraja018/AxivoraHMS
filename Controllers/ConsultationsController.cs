@@ -75,20 +75,6 @@ namespace Axivora.Controllers
         }
 
         /// <summary>
-        /// Get consultation by appointment ID
-        /// </summary>
-        [HttpGet("appointment/{appointmentId}")]
-        [ProducesResponseType(typeof(ConsultationDto), StatusCodes.Status200OK)]
-        [ProducesResponseType(StatusCodes.Status404NotFound)]
-        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-        [ProducesResponseType(StatusCodes.Status403Forbidden)]
-        public async Task<ActionResult<ConsultationDto>> GetConsultationByAppointment(int appointmentId)
-        {
-            var consultation = await _consultationService.GetConsultationByAppointmentIdAsync(appointmentId);
-            return Ok(consultation);
-        }
-
-        /// <summary>
         /// Get all consultations for the currently authenticated patient, with pagination.
         /// </summary>
         /// <param name="paginationParams">Pagination settings (pageNumber, pageSize).</param>

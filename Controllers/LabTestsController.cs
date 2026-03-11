@@ -95,26 +95,5 @@ namespace Axivora.Controllers
             var result = await _labTestService.GetCatalogueAsync(search, pageNumber, pageSize);
             return Ok(result);
         }
-
-        /// <summary>
-        /// Returns a single lab test catalogue entry by its identifier.
-        /// </summary>
-        /// <param name="id">The <c>LabTestId</c> to retrieve.</param>
-        /// <response code="200">Lab test found and returned.</response>
-        /// <response code="401">JWT token is missing or invalid.</response>
-        /// <response code="404">No lab test exists with the given identifier.</response>
-        [HttpGet("catalogue/{id:int}")]
-        [Authorize(Roles = "Admin,Doctor,Patient")]
-        [ProducesResponseType(typeof(LabTestCatalogueDto), StatusCodes.Status200OK)]
-        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-        [ProducesResponseType(StatusCodes.Status404NotFound)]
-        public async Task<ActionResult<LabTestCatalogueDto>> GetCatalogueItem(int id)
-        {
-            var item = await _labTestService.GetCatalogueItemAsync(id);
-            if (item is null)
-                return NotFound();
-
-            return Ok(item);
-        }
     }
 }

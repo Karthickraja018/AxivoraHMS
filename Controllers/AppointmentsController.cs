@@ -60,29 +60,6 @@ namespace Axivora.Controllers
         }
 
         /// <summary>
-        /// Get appointments by patient ID
-        /// </summary>
-        [HttpGet("patient/{patientId}")]
-        [ProducesResponseType(typeof(IEnumerable<AppointmentDto>), StatusCodes.Status200OK)]
-        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-        [ProducesResponseType(StatusCodes.Status403Forbidden)]
-        public async Task<ActionResult<IEnumerable<AppointmentDto>>> GetAppointmentsByPatient(int patientId)
-        {
-            var callerUserId = int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
-            var callerRole = User.FindFirstValue(ClaimTypes.Role)!;
-
-            if (callerRole == "Patient")
-            {
-                var callerPatient = await _patientService.GetPatientByUserIdAsync(callerUserId);
-                if (callerPatient == null || callerPatient.PatientId != patientId)
-                    return Forbid();
-            }
-
-            var appointments = await _appointmentService.GetAppointmentsByPatientIdAsync(patientId);
-            return Ok(appointments);
-        }
-
-        /// <summary>
         /// Get appointments for the currently authenticated doctor, with optional date filter and pagination.
         /// </summary>
         [HttpGet("doctor/me")]
@@ -96,36 +73,6 @@ namespace Axivora.Controllers
         {
             var userId = int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
             var appointments = await _appointmentService.GetDoctorAppointmentsAsync(userId, paginationParams, date);
-            return Ok(appointments);
-        }
-
-        /// <summary>
-        /// Get appointments by doctor ID
-        /// </summary>
-        [HttpGet("doctor/{doctorId}")]
-        [Authorize(Roles = "Admin,Doctor")]
-        [ProducesResponseType(typeof(IEnumerable<AppointmentDto>), StatusCodes.Status200OK)]
-        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-        [ProducesResponseType(StatusCodes.Status403Forbidden)]
-        public async Task<ActionResult<IEnumerable<AppointmentDto>>> GetAppointmentsByDoctor(int doctorId)
-        {
-            var appointments = await _appointmentService.GetAppointmentsByDoctorIdAsync(doctorId);
-            return Ok(appointments);
-        }
-
-        /// <summary>
-        /// Get appointments by date range (Admin and Doctor only)
-        /// </summary>
-        [HttpGet("date-range")]
-        [Authorize(Roles = "Admin,Doctor")]
-        [ProducesResponseType(typeof(IEnumerable<AppointmentDto>), StatusCodes.Status200OK)]
-        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-        [ProducesResponseType(StatusCodes.Status403Forbidden)]
-        public async Task<ActionResult<IEnumerable<AppointmentDto>>> GetAppointmentsByDateRange(
-            [FromQuery] DateTime startDate, 
-            [FromQuery] DateTime endDate)
-        {
-            var appointments = await _appointmentService.GetAppointmentsByDateRangeAsync(startDate, endDate);
             return Ok(appointments);
         }
 
@@ -164,25 +111,6 @@ namespace Axivora.Controllers
 
             var role = User.FindFirstValue(ClaimTypes.Role)!;
             var appointment = await _appointmentService.UpdateAppointmentStatusAsync(id, statusDto.Status, role);
-            return Ok(appointment);
-        }
-
-        /// <summary>
-        /// Update appointment
-        /// </summary>
-        [HttpPut("{id}")]
-        [ProducesResponseType(typeof(AppointmentDto), StatusCodes.Status200OK)]
-        [ProducesResponseType(StatusCodes.Status403Forbidden)]
-        [ProducesResponseType(StatusCodes.Status404NotFound)]
-        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-        public async Task<ActionResult<AppointmentDto>> UpdateAppointment(int id, [FromBody] UpdateAppointmentDto updateAppointmentDto)
-        {
-            if (!ModelState.IsValid)
-                return BadRequest(ModelState);
-
-            var userId = int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
-            var role = User.FindFirstValue(ClaimTypes.Role)!;
-            var appointment = await _appointmentService.UpdateAppointmentAsync(id, updateAppointmentDto, userId, role);
             return Ok(appointment);
         }
 

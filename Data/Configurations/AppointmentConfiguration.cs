@@ -43,6 +43,11 @@ namespace Axivora.Data.Configurations
                    .IsRequired()
                    .HasDefaultValueSql("SYSDATETIME()");
 
+            // Optimistic concurrency token
+            builder.Property(apt => apt.RowVersion)
+                   .IsRowVersion()
+                   .IsRequired();
+
             // Global query filter for soft delete
             builder.HasQueryFilter(apt => !apt.IsDeleted);
 

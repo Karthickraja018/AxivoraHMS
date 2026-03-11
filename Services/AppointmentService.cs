@@ -1,4 +1,5 @@
 using AutoMapper;
+using Microsoft.EntityFrameworkCore;
 using Axivora.DTOs;
 using Axivora.Models;
 using Axivora.Services.Interfaces;
@@ -201,24 +202,40 @@ namespace Axivora.Services
 
         // ?? Slot-based Booking ????????????????????????????????????????????????
 
+        /// <summary>
+        /// Books a slot for the caller patient.
+        ///
+        /// FIX 1 — Race condition prevention: the slot is fetched and its availability
+        /// validated INSIDE the transaction so no concurrent request can book the same slot
+        /// between the check and the update.
+        ///
+        /// FIX 2 — Optimistic concurrency: if two transactions reach SaveChanges at the same
+        /// time, the RowVersion token on AppointmentSlot causes one to throw
+        /// DbUpdateConcurrencyException, which is converted to InvalidOperationException.
+        /// </summary>
         public async Task<AppointmentDto> BookAsync(CreateAppointmentDto dto, int callerUserId)
         {
             var patient = await _repository.GetPatientByUserIdAsync(callerUserId)
                 ?? throw new KeyNotFoundException("Patient profile not found. Please complete your profile first.");
 
-            var slot = await _repository.GetSlotByIdAsync(dto.SlotId)
-                ?? throw new KeyNotFoundException($"Slot with ID {dto.SlotId} not found.");
-
-            if (slot.Status != SlotStatus.Available)
-                throw new InvalidOperationException(
-                    $"Slot {dto.SlotId} is not available for booking (current status: {slot.Status}).");
-
+            // Resolve the "Scheduled" status before opening the transaction to minimise its duration
             var status = await _repository.GetStatusByNameAsync("Scheduled")
                 ?? throw new InvalidOperationException("Appointment status 'Scheduled' is not configured.");
 
             await _repository.BeginTransactionAsync();
             try
             {
+                // FIX 1: Fetch and validate the slot INSIDE the transaction
+                var slot = await _repository.GetSlotByIdAsync(dto.SlotId)
+                    ?? throw new KeyNotFoundException($"Slot with ID {dto.SlotId} not found.");
+
+                if (slot.Status != SlotStatus.Available)
+                    throw new InvalidOperationException(
+                        $"Slot {dto.SlotId} is not available for booking (current status: {slot.Status}).");
+
+                // Mark the slot booked atomically before creating the appointment
+                slot.Status = SlotStatus.Booked;
+
                 var appointment = new Appointment
                 {
                     PatientId        = patient.PatientId,
@@ -233,9 +250,20 @@ namespace Axivora.Services
                 };
 
                 await _repository.AddAsync(appointment);
-                await _repository.SaveChangesAsync();
 
-                slot.Status        = SlotStatus.Booked;
+                // FIX 2: SaveChanges here will throw DbUpdateConcurrencyException if another
+                // transaction already modified the slot's RowVersion since we read it
+                try
+                {
+                    await _repository.SaveChangesAsync();
+                }
+                catch (DbUpdateConcurrencyException)
+                {
+                    throw new InvalidOperationException(
+                        "Slot was already booked by another user. Please choose a different slot.");
+                }
+
+                // Link the appointment back to the slot now that the appointment ID is known
                 slot.AppointmentId = appointment.AppointmentId;
                 await _repository.SaveChangesAsync();
 
@@ -254,6 +282,14 @@ namespace Axivora.Services
             }
         }
 
+        /// <summary>
+        /// Reschedules an appointment to a new slot.
+        ///
+        /// FIX 4: Both the old slot release and the new slot booking are wrapped in a
+        /// transaction so the two entities are always updated atomically.
+        /// FIX 2: DbUpdateConcurrencyException on the new slot is surfaced as
+        /// InvalidOperationException so callers receive a meaningful HTTP 409.
+        /// </summary>
         public async Task<AppointmentDto> RescheduleAsync(
             int appointmentId, RescheduleAppointmentDto dto, int callerUserId, string callerRole)
         {
@@ -279,6 +315,7 @@ namespace Axivora.Services
                 throw new InvalidOperationException(
                     $"Slot {dto.NewSlotId} is not available (current status: {newSlot.Status}).");
 
+            // FIX 4: Wrap old-slot release + new-slot booking in a single transaction
             await _repository.BeginTransactionAsync();
             try
             {
@@ -299,7 +336,17 @@ namespace Axivora.Services
                 appointment.AppointmentStart = newSlot.SlotStart;
                 appointment.AppointmentEnd   = newSlot.SlotEnd;
 
-                await _repository.SaveChangesAsync();
+                // FIX 2: Catch RowVersion conflicts on the new slot
+                try
+                {
+                    await _repository.SaveChangesAsync();
+                }
+                catch (DbUpdateConcurrencyException)
+                {
+                    throw new InvalidOperationException(
+                        "Slot was already booked by another user. Please choose a different slot.");
+                }
+
                 await _repository.CommitTransactionAsync();
 
                 _logger.LogInformation(
@@ -315,6 +362,12 @@ namespace Axivora.Services
             }
         }
 
+        /// <summary>
+        /// Cancels (soft-deletes) an appointment and releases its slot.
+        ///
+        /// FIX 4: Slot release, soft-delete, and status update are wrapped in a single
+        /// transaction so all three entities are updated atomically.
+        /// </summary>
         public async Task DeleteAsync(int appointmentId, int callerUserId, string callerRole)
         {
             var appointment = await _repository.GetByIdAsync(appointmentId)
@@ -335,23 +388,34 @@ namespace Axivora.Services
                         "You do not have permission to cancel this appointment.");
             }
 
-            if (appointment.SlotId.HasValue)
+            // FIX 4: Wrap slot release + soft-delete + status update in a single transaction
+            await _repository.BeginTransactionAsync();
+            try
             {
-                var slot = await _repository.GetSlotByIdAsync(appointment.SlotId.Value);
-                if (slot is not null)
+                if (appointment.SlotId.HasValue)
                 {
-                    slot.Status        = SlotStatus.Available;
-                    slot.AppointmentId = null;
+                    var slot = await _repository.GetSlotByIdAsync(appointment.SlotId.Value);
+                    if (slot is not null)
+                    {
+                        slot.Status        = SlotStatus.Available;
+                        slot.AppointmentId = null;
+                    }
                 }
+
+                appointment.IsDeleted = true;
+
+                var cancelledStatus = await _repository.GetStatusByNameAsync("Cancelled");
+                if (cancelledStatus is not null)
+                    appointment.StatusId = cancelledStatus.StatusId;
+
+                await _repository.SaveChangesAsync();
+                await _repository.CommitTransactionAsync();
             }
-
-            appointment.IsDeleted = true;
-
-            var cancelledStatus = await _repository.GetStatusByNameAsync("Cancelled");
-            if (cancelledStatus is not null)
-                appointment.StatusId = cancelledStatus.StatusId;
-
-            await _repository.SaveChangesAsync();
+            catch
+            {
+                await _repository.RollbackTransactionAsync();
+                throw;
+            }
 
             _logger.LogInformation(
                 "Cancelled appointment {AppointmentId} by user {UserId}.", appointmentId, callerUserId);

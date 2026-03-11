@@ -25,6 +25,11 @@ namespace Axivora.Data.Configurations
                    .HasMaxLength(20)
                    .HasDefaultValue("Available");
 
+            // Optimistic concurrency token
+            builder.Property(s => s.RowVersion)
+                   .IsRowVersion()
+                   .IsRequired();
+
             // AppointmentId must be unique — one slot can only be linked to one appointment
             builder.HasIndex(s => s.AppointmentId)
                    .IsUnique()

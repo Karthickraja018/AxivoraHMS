@@ -25,10 +25,42 @@ namespace Axivora.Services
             _logger         = logger;
         }
 
+        /// <summary>
+        /// Returns all Available slots for a doctor on a given date.
+        /// Generates slots on demand if the availability day exists but has no slots yet,
+        /// so callers never receive an empty list due to a missed background run.
+        /// </summary>
         public async Task<IEnumerable<SlotDto>> GetAvailableSlotsAsync(int doctorId, DateOnly date)
         {
+            // Trigger on-demand generation before querying — idempotent if slots already exist
+            await EnsureSlotsGeneratedAsync(doctorId, date);
+
             var slots = await _slotRepository.GetAvailableSlotsByDoctorAndDateAsync(doctorId, date);
             return _mapper.Map<IEnumerable<SlotDto>>(slots);
+        }
+
+        /// <summary>
+        /// Ensures slot records exist for the given doctor and date.
+        /// If the availability day exists but has no slots yet, generates them now.
+        /// Idempotent — safe to call repeatedly; no slots are created twice.
+        /// </summary>
+        public async Task EnsureSlotsGeneratedAsync(int doctorId, DateOnly date)
+        {
+            var day = await _dayRepository.GetByDoctorAndDateAsync(doctorId, date);
+
+            // No availability day configured for this doctor/date — nothing to generate
+            if (day is null)
+                return;
+
+            // Day exists but slots have not been generated yet — generate now
+            if (!day.Slots.Any())
+            {
+                _logger.LogInformation(
+                    "On-demand slot generation triggered for doctor {DoctorId} on {Date}.",
+                    doctorId, date);
+
+                await GenerateSlotsForDayAsync(day.Id);
+            }
         }
 
         public async Task<SlotDetailDto> GetSlotDetailAsync(int slotId)
@@ -144,6 +176,10 @@ namespace Axivora.Services
                 doctorId, dto.From, dto.To, dto.Reason ?? "N/A");
         }
 
+        /// <summary>
+        /// Generates and persists AppointmentSlot records for a given availability day.
+        /// Idempotent — skips generation if slots already exist for the day.
+        /// </summary>
         public async Task GenerateSlotsForDayAsync(int availabilityDayId)
         {
             // Idempotent — do nothing if slots already exist

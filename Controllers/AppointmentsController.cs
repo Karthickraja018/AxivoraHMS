@@ -1,8 +1,10 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
+using System.Text.Json;
 using Axivora.DTOs;
 using Axivora.Helpers;
+using Axivora.Services;
 using Axivora.Services.Interfaces;
 
 namespace Axivora.Controllers
@@ -13,19 +15,28 @@ namespace Axivora.Controllers
     public class AppointmentsController : ControllerBase
     {
         private readonly IAppointmentService _appointmentService;
+        private readonly IdempotencyService  _idempotencyService;
 
-        public AppointmentsController(IAppointmentService appointmentService)
+        public AppointmentsController(
+            IAppointmentService appointmentService,
+            IdempotencyService idempotencyService)
         {
             _appointmentService = appointmentService;
+            _idempotencyService = idempotencyService;
         }
 
         /// <summary>
         /// Book an available slot. Patients only.
         /// Creates an appointment and atomically marks the slot as Booked.
+        ///
+        /// FIX 11 — Idempotency: supply an optional <c>Idempotency-Key</c> header to make
+        /// this operation safe to retry. If the key has been seen before the stored response
+        /// is returned without creating a duplicate appointment.
         /// </summary>
         [HttpPost]
         [Authorize(Roles = "Patient")]
         [ProducesResponseType(typeof(AppointmentDto), StatusCodes.Status201Created)]
+        [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         [ProducesResponseType(StatusCodes.Status409Conflict)]
@@ -39,9 +50,32 @@ namespace Axivora.Controllers
 
             var userId = int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
 
+            // FIX 11: Check for a client-supplied idempotency key
+            var idempotencyKey = Request.Headers["Idempotency-Key"].FirstOrDefault();
+            if (!string.IsNullOrWhiteSpace(idempotencyKey))
+            {
+                var stored = await _idempotencyService.GetStoredResponseAsync(idempotencyKey);
+                if (stored is not null)
+                {
+                    // Return the previously stored response — no duplicate booking created
+                    var cached = JsonSerializer.Deserialize<AppointmentDto>(stored,
+                        new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                    return Ok(cached);
+                }
+            }
+
             try
             {
                 var result = await _appointmentService.BookAsync(dto, userId);
+
+                // Persist the result so subsequent retries with the same key are short-circuited
+                if (!string.IsNullOrWhiteSpace(idempotencyKey))
+                {
+                    var requestBody = JsonSerializer.Serialize(dto,
+                        new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
+                    await _idempotencyService.StoreResponseAsync(idempotencyKey, requestBody, result);
+                }
+
                 return CreatedAtAction(nameof(GetAppointmentById), new { id = result.AppointmentId }, result);
             }
             catch (InvalidOperationException ex)

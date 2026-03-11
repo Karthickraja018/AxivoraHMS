@@ -44,8 +44,11 @@ namespace Axivora.Middleware
                     statusCode = HttpStatusCode.BadRequest;
                     message = exception.Message;
                     break;
+                // UnauthorizedAccessException represents a permissions (ownership) violation —
+                // the user is authenticated but not authorised for this specific resource ? 403.
+                // HTTP 401 is only produced by the JWT middleware for missing/invalid tokens.
                 case UnauthorizedAccessException:
-                    statusCode = HttpStatusCode.Unauthorized;
+                    statusCode = HttpStatusCode.Forbidden;
                     message = exception.Message;
                     break;
             }
@@ -64,6 +67,4 @@ namespace Axivora.Middleware
             return context.Response.WriteAsync(JsonSerializer.Serialize(response, options));
         }
     }
-
-    
 }

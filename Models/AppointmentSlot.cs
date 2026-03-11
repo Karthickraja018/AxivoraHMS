@@ -1,3 +1,5 @@
+using System.ComponentModel.DataAnnotations;
+
 namespace Axivora.Models
 {
     /// <summary>
@@ -21,6 +23,10 @@ namespace Axivora.Models
 
         /// <summary>Populated once a patient books this slot.</summary>
         public int? AppointmentId { get; set; }
+
+        /// <summary>Optimistic concurrency token — prevents simultaneous double-bookings.</summary>
+        [Timestamp]
+        public byte[] RowVersion { get; set; } = null!;
 
         // Navigation properties
         public Doctor? Doctor { get; set; }

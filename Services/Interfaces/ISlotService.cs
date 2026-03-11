@@ -4,7 +4,10 @@ namespace Axivora.Services.Interfaces
 {
     public interface ISlotService
     {
-        /// <summary>Returns all Available slots for a doctor on a given date.</summary>
+        /// <summary>
+        /// Returns all Available slots for a doctor on a given date.
+        /// Generates slots on demand if the availability day exists but has no slots yet.
+        /// </summary>
         Task<IEnumerable<SlotDto>> GetAvailableSlotsAsync(int doctorId, DateOnly date);
 
         /// <summary>Returns the full detail of a single slot by its ID.</summary>
@@ -29,5 +32,12 @@ namespace Axivora.Services.Interfaces
         /// Idempotent — skips generation if slots already exist for the day.
         /// </summary>
         Task GenerateSlotsForDayAsync(int availabilityDayId);
+
+        /// <summary>
+        /// Ensures slots exist for a doctor on the given date, generating them on demand
+        /// from the availability day record if none have been created yet.
+        /// Idempotent — safe to call repeatedly.
+        /// </summary>
+        Task EnsureSlotsGeneratedAsync(int doctorId, DateOnly date);
     }
 }

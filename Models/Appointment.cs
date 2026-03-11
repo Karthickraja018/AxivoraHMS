@@ -33,6 +33,10 @@ namespace Axivora.Models
 
         public DateTime CreatedAt { get; set; }
 
+        /// <summary>Optimistic concurrency token — prevents conflicting concurrent updates.</summary>
+        [Timestamp]
+        public byte[] RowVersion { get; set; } = null!;
+
         // Navigation properties
         public Patient? Patient { get; set; }
         public Doctor? Doctor { get; set; }

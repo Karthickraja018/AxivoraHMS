@@ -47,6 +47,9 @@ namespace Axivora.Data
         // Patient Feedback
         public DbSet<SessionFeedback> SessionFeedbacks { get; set; }
 
+        // Idempotency — prevents duplicate appointment bookings on retry
+        public DbSet<IdempotencyRecord> IdempotencyRecords { get; set; }
+
         // Reporting Views
         public DbSet<AppointmentReportView> AppointmentReports { get; set; }
         public DbSet<DoctorWorkloadReportView> DoctorWorkloadReports { get; set; }

@@ -10,20 +10,17 @@ namespace Axivora.Services
     {
         private readonly IAvailabilityTemplateRepository _templateRepository;
         private readonly IAvailabilityDayRepository _dayRepository;
-        private readonly ISlotService _slotService;
         private readonly IMapper _mapper;
         private readonly ILogger<DoctorAvailabilityService> _logger;
 
         public DoctorAvailabilityService(
             IAvailabilityTemplateRepository templateRepository,
             IAvailabilityDayRepository dayRepository,
-            ISlotService slotService,
             IMapper mapper,
             ILogger<DoctorAvailabilityService> logger)
         {
             _templateRepository = templateRepository;
             _dayRepository      = dayRepository;
-            _slotService        = slotService;
             _mapper             = mapper;
             _logger             = logger;
         }
@@ -70,25 +67,30 @@ namespace Axivora.Services
             return _mapper.Map<AvailabilityDayDto>(day);
         }
 
+        /// <summary>
+        /// Generates <see cref="DoctorAvailabilityDay"/> records for the next
+        /// <paramref name="daysAhead"/> days based on all active templates.
+        ///
+        /// Slot generation is deliberately omitted here — slots are created lazily the first
+        /// time a caller requests them via <see cref="ISlotService.EnsureSlotsGeneratedAsync"/>.
+        /// This avoids the performance cost of generating slots for every doctor nightly.
+        /// </summary>
         public async Task GenerateAvailabilityDaysAsync(int daysAhead = 30)
         {
-            var today    = DateOnly.FromDateTime(DateTime.UtcNow);
-            var endDate  = today.AddDays(daysAhead);
+            var today     = DateOnly.FromDateTime(DateTime.UtcNow);
+            var endDate   = today.AddDays(daysAhead);
             var templates = await _templateRepository.GetActiveTemplatesAsync();
 
             foreach (var template in templates)
             {
-                // Walk every calendar day in the window and find ones matching the template's DayOfWeek
                 for (var date = today; date <= endDate; date = date.AddDays(1))
                 {
                     if ((int)date.DayOfWeek != template.DayOfWeek)
                         continue;
 
-                    // Skip dates before the template becomes effective
                     if (date < template.EffectiveFromDate)
                         continue;
 
-                    // Skip dates after the template expires
                     if (template.EffectiveToDate.HasValue && date > template.EffectiveToDate.Value)
                         continue;
 
@@ -111,11 +113,9 @@ namespace Axivora.Services
                     await _dayRepository.AddAsync(day);
                     await _dayRepository.SaveChangesAsync();
 
-                    // Generate and persist slots immediately for this day
-                    await _slotService.GenerateSlotsForDayAsync(day.Id);
-
+                    // Slots are generated lazily on first access — no eager generation here
                     _logger.LogDebug(
-                        "Generated availability day {Date} for doctor {DoctorId} from template {TemplateId}.",
+                        "Created availability day {Date} for doctor {DoctorId} from template {TemplateId}.",
                         date, template.DoctorId, template.Id);
                 }
             }

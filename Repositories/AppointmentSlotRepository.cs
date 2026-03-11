@@ -16,6 +16,10 @@ namespace Axivora.Repositories
             _context = context;
         }
 
+        /// <summary>
+        /// Fetches a tracked slot so callers can update its status and save.
+        /// Tracking is intentionally kept — do NOT add AsNoTracking.
+        /// </summary>
         public async Task<AppointmentSlot?> GetByIdAsync(int id) =>
             await _context.AppointmentSlots
                 .Include(s => s.AvailabilityDay)
@@ -24,6 +28,7 @@ namespace Axivora.Repositories
         public async Task<IEnumerable<AppointmentSlot>> GetAvailableSlotsByDoctorAndDateAsync(
             int doctorId, DateOnly date) =>
             await _context.AppointmentSlots
+                .AsNoTracking()
                 .Where(s => s.DoctorId == doctorId &&
                             s.AvailabilityDay!.Date == date &&
                             s.Status == SlotStatus.Available)
@@ -33,17 +38,20 @@ namespace Axivora.Repositories
         public async Task<IEnumerable<AppointmentSlot>> GetSlotsByAvailabilityDayAsync(
             int availabilityDayId) =>
             await _context.AppointmentSlots
+                .AsNoTracking()
                 .Where(s => s.AvailabilityDayId == availabilityDayId)
                 .OrderBy(s => s.SlotStart)
                 .ToListAsync();
 
         public async Task<bool> AnyExistForDayAsync(int availabilityDayId) =>
             await _context.AppointmentSlots
+                .AsNoTracking()
                 .AnyAsync(s => s.AvailabilityDayId == availabilityDayId);
 
         public async Task<IEnumerable<AppointmentSlot>> GetSlotsByDoctorAndDateRangeAsync(
             int doctorId, DateOnly from, DateOnly to) =>
             await _context.AppointmentSlots
+                .AsNoTracking()
                 .Include(s => s.AvailabilityDay)
                 .Where(s => s.DoctorId == doctorId &&
                             s.AvailabilityDay!.Date >= from &&
@@ -54,6 +62,7 @@ namespace Axivora.Repositories
         public async Task<IEnumerable<AppointmentSlot>> GetAvailableSlotsByDoctorAndDateRangeAsync(
             int doctorId, DateOnly from, DateOnly to) =>
             await _context.AppointmentSlots
+                .AsNoTracking()
                 .Include(s => s.AvailabilityDay)
                 .Where(s => s.DoctorId == doctorId &&
                             s.AvailabilityDay!.Date >= from &&

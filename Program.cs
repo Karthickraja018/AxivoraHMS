@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
 using Axivora.Data;
@@ -52,6 +53,17 @@ namespace Axivora
                 };
             });
 
+            // FIX 8: Resource-based ownership policy
+            // Controllers call: _authorizationService.AuthorizeAsync(User, resource, "ResourceOwner")
+            builder.Services.AddAuthorization(options =>
+            {
+                options.AddPolicy("ResourceOwner", policy =>
+                    policy.Requirements.Add(new OwnershipRequirement()));
+            });
+
+            // FIX 8: Register the ownership handler that implements the ResourceOwner policy
+            builder.Services.AddScoped<IAuthorizationHandler, OwnershipAuthorizationHandler>();
+
             // Register AutoMapper
             builder.Services.AddAutoMapper(typeof(MappingProfile));
 
@@ -71,6 +83,9 @@ namespace Axivora
             builder.Services.AddScoped<IDoctorAvailabilityService, DoctorAvailabilityService>();
             builder.Services.AddScoped<ISlotService, SlotService>();
             builder.Services.AddHostedService<AvailabilityGenerationBackgroundService>();
+
+            // FIX 11: Idempotency service — prevents duplicate bookings on network retries
+            builder.Services.AddScoped<IdempotencyService>();
 
             // Register Repositories
             builder.Services.AddScoped<IAppointmentRepository, AppointmentRepository>();

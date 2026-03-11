@@ -16,8 +16,13 @@ namespace Axivora.Repositories
             _context = context;
         }
 
+        /// <summary>
+        /// Read-only base query — AsNoTracking improves performance for all list/count
+        /// queries that never modify the returned entities.
+        /// </summary>
         private IQueryable<Appointment> BaseQuery() =>
             _context.Appointments
+                .AsNoTracking()
                 .Include(a => a.Patient)
                 .Include(a => a.Doctor)
                 .Include(a => a.Status)
@@ -35,8 +40,16 @@ namespace Axivora.Repositories
                 .Skip(skip).Take(take)
                 .ToListAsync();
 
+        /// <summary>
+        /// Fetches a tracked appointment so the service layer can mutate and save it.
+        /// Tracking is intentionally kept here — do NOT add AsNoTracking.
+        /// </summary>
         public async Task<Appointment?> GetByIdAsync(int appointmentId) =>
-            await BaseQuery()
+            await _context.Appointments
+                .Include(a => a.Patient)
+                .Include(a => a.Doctor)
+                .Include(a => a.Status)
+                .Where(a => !a.IsDeleted)
                 .FirstOrDefaultAsync(a => a.AppointmentId == appointmentId);
 
         public async Task<IEnumerable<Appointment>> GetByPatientIdAsync(int patientId) =>
@@ -56,28 +69,40 @@ namespace Axivora.Repositories
 
         public async Task<bool> DoctorExistsAsync(int doctorId) =>
             await _context.Doctors
+                .AsNoTracking()
                 .IgnoreQueryFilters()
                 .AnyAsync(d => d.DoctorId == doctorId && !d.IsDeleted);
 
         public async Task<bool> PatientExistsAsync(int patientId) =>
             await _context.Patients
+                .AsNoTracking()
                 .IgnoreQueryFilters()
                 .AnyAsync(p => p.PatientId == patientId && !p.IsDeleted);
 
         public async Task<bool> StatusExistsAsync(int statusId) =>
-            await _context.AppointmentStatuses.AnyAsync(s => s.StatusId == statusId);
+            await _context.AppointmentStatuses
+                .AsNoTracking()
+                .AnyAsync(s => s.StatusId == statusId);
 
         public async Task<AppointmentStatus?> GetStatusByIdAsync(int statusId) =>
-            await _context.AppointmentStatuses.FirstOrDefaultAsync(s => s.StatusId == statusId);
+            await _context.AppointmentStatuses
+                .AsNoTracking()
+                .FirstOrDefaultAsync(s => s.StatusId == statusId);
 
         public async Task<AppointmentStatus?> GetStatusByNameAsync(string statusName) =>
-            await _context.AppointmentStatuses.FirstOrDefaultAsync(s => s.StatusName == statusName);
+            await _context.AppointmentStatuses
+                .AsNoTracking()
+                .FirstOrDefaultAsync(s => s.StatusName == statusName);
 
         public async Task<Patient?> GetPatientByUserIdAsync(int userId) =>
-            await _context.Patients.FirstOrDefaultAsync(p => p.UserId == userId && !p.IsDeleted);
+            await _context.Patients
+                .AsNoTracking()
+                .FirstOrDefaultAsync(p => p.UserId == userId && !p.IsDeleted);
 
         public async Task<Doctor?> GetDoctorByUserIdAsync(int userId) =>
-            await _context.Doctors.FirstOrDefaultAsync(d => d.UserId == userId && !d.IsDeleted);
+            await _context.Doctors
+                .AsNoTracking()
+                .FirstOrDefaultAsync(d => d.UserId == userId && !d.IsDeleted);
 
         public async Task<int> CountByPatientAsync(int patientId, string? status)
         {
@@ -104,7 +129,7 @@ namespace Axivora.Repositories
             if (date.HasValue)
             {
                 var dayStart = date.Value.Date;
-                var dayEnd = dayStart.AddDays(1);
+                var dayEnd   = dayStart.AddDays(1);
                 query = query.Where(a => a.AppointmentStart >= dayStart && a.AppointmentStart < dayEnd);
             }
             return await query.CountAsync();
@@ -116,7 +141,7 @@ namespace Axivora.Repositories
             if (date.HasValue)
             {
                 var dayStart = date.Value.Date;
-                var dayEnd = dayStart.AddDays(1);
+                var dayEnd   = dayStart.AddDays(1);
                 query = query.Where(a => a.AppointmentStart >= dayStart && a.AppointmentStart < dayEnd);
             }
             return await query
@@ -125,6 +150,10 @@ namespace Axivora.Repositories
                 .ToListAsync();
         }
 
+        /// <summary>
+        /// Fetches a tracked slot so the service layer can update its status and save it.
+        /// Tracking is intentionally kept here — do NOT add AsNoTracking.
+        /// </summary>
         public async Task<AppointmentSlot?> GetSlotByIdAsync(int slotId) =>
             await _context.AppointmentSlots
                 .Include(s => s.AvailabilityDay)

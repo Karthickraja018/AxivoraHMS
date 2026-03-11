@@ -69,6 +69,21 @@ namespace Axivora.Configurations
                    .WithOne(apt => apt.Doctor)
                    .HasForeignKey(apt => apt.DoctorId)
                    .OnDelete(DeleteBehavior.Restrict);
+
+            builder.HasMany(d => d.AvailabilityTemplates)
+                   .WithOne(t => t.Doctor)
+                   .HasForeignKey(t => t.DoctorId)
+                   .OnDelete(DeleteBehavior.Cascade);
+
+            builder.HasMany(d => d.AvailabilityDays)
+                   .WithOne(day => day.Doctor)
+                   .HasForeignKey(day => day.DoctorId)
+                   .OnDelete(DeleteBehavior.Cascade);
+
+            builder.HasMany(d => d.AppointmentSlots)
+                   .WithOne(s => s.Doctor)
+                   .HasForeignKey(s => s.DoctorId)
+                   .OnDelete(DeleteBehavior.Restrict);
         }
     }
 }

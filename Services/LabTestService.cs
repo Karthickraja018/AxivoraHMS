@@ -1,31 +1,22 @@
-using AutoMapper;
-using Microsoft.EntityFrameworkCore;
-using Axivora.Data;
 using Axivora.DTOs;
 using Axivora.Helpers;
 using Axivora.Services.Interfaces;
+using Axivora.Repositories.Interfaces;
 
 namespace Axivora.Services
 {
     public class LabTestService : ILabTestService
     {
-        private readonly AxivoraDbContext _context;
-        private readonly IMapper _mapper;
+        private readonly ILabTestRepository _repository;
 
-        public LabTestService(AxivoraDbContext context, IMapper mapper)
+        public LabTestService(ILabTestRepository repository)
         {
-            _context = context;
-            _mapper = mapper;
+            _repository = repository;
         }
 
         public async Task<LabResultDto> UploadResultAsync(int orderedTestId, LabResultUpdateDto dto)
         {
-            var orderedTest = await _context.OrderedTests
-                .Include(ot => ot.LabTest)
-                .Include(ot => ot.Consultation)
-                    .ThenInclude(c => c!.Appointment)
-                        .ThenInclude(a => a!.Patient)
-                .FirstOrDefaultAsync(ot => ot.OrderedTestId == orderedTestId);
+            var orderedTest = await _repository.GetOrderedTestByIdAsync(orderedTestId);
 
             if (orderedTest == null)
                 throw new KeyNotFoundException($"Ordered test with ID {orderedTestId} not found.");
@@ -33,81 +24,50 @@ namespace Axivora.Services
             if (orderedTest.Status == "Completed")
                 throw new InvalidOperationException("This lab test result has already been uploaded. Use PUT to update it.");
 
-            orderedTest.Result = dto.Result;
-            orderedTest.Status = "Completed";
+            orderedTest.Result     = dto.Result;
+            orderedTest.Status     = "Completed";
             orderedTest.ResultDate = DateTime.UtcNow;
 
-            await _context.SaveChangesAsync();
+            await _repository.SaveChangesAsync();
 
             return MapToLabResultDto(orderedTest);
         }
 
         public async Task<IEnumerable<LabResultDto>> GetResultsByPatientAsync(int patientId)
         {
-            var patientExists = await _context.Patients.AnyAsync(p => p.PatientId == patientId && !p.IsDeleted);
-            if (!patientExists)
+            if (!await _repository.PatientExistsAsync(patientId))
                 throw new KeyNotFoundException($"Patient with ID {patientId} not found.");
 
-            var orderedTests = await _context.OrderedTests
-                .Include(ot => ot.LabTest)
-                .Include(ot => ot.Consultation)
-                    .ThenInclude(c => c!.Appointment)
-                        .ThenInclude(a => a!.Patient)
-                .Where(ot => ot.Consultation!.Appointment!.PatientId == patientId)
-                .OrderByDescending(ot => ot.ResultDate ?? DateTime.MinValue)
-                .ToListAsync();
-
+            var orderedTests = await _repository.GetByPatientIdAsync(patientId);
             return orderedTests.Select(MapToLabResultDto);
         }
 
         public async Task<IEnumerable<LabResultDto>> GetResultsByConsultationAsync(int consultationId)
         {
-            var consultationExists = await _context.Consultations.AnyAsync(c => c.ConsultationId == consultationId);
-            if (!consultationExists)
+            if (!await _repository.ConsultationExistsAsync(consultationId))
                 throw new KeyNotFoundException($"Consultation with ID {consultationId} not found.");
 
-            var orderedTests = await _context.OrderedTests
-                .Include(ot => ot.LabTest)
-                .Include(ot => ot.Consultation)
-                    .ThenInclude(c => c!.Appointment)
-                        .ThenInclude(a => a!.Patient)
-                .Where(ot => ot.ConsultationId == consultationId)
-                .OrderBy(ot => ot.OrderedTestId)
-                .ToListAsync();
-
+            var orderedTests = await _repository.GetByConsultationIdAsync(consultationId);
             return orderedTests.Select(MapToLabResultDto);
         }
 
-        /// <inheritdoc />
-        public async Task<PaginationResponse<LabTestCatalogueDto>> GetCatalogueAsync(
-            string? search, int pageNumber, int pageSize)
+        public async Task<PaginationResponse<LabTestCatalogueDto>> GetCatalogueAsync(string? search, int pageNumber, int pageSize)
         {
-            var query = _context.LabTests.AsQueryable();
+            var totalCount = await _repository.CountCatalogueAsync(search);
+            var items = await _repository.GetCataloguePagedAsync(search, (pageNumber - 1) * pageSize, pageSize);
 
-            if (!string.IsNullOrWhiteSpace(search))
-                query = query.Where(lt => lt.TestName.Contains(search));
+            var dtos = items.Select(lt => new LabTestCatalogueDto
+            {
+                LabTestId = lt.LabTestId,
+                TestName  = lt.TestName
+            }).ToList();
 
-            var totalCount = await query.CountAsync();
-
-            var items = await query
-                .OrderBy(lt => lt.TestName)
-                .Skip((pageNumber - 1) * pageSize)
-                .Take(pageSize)
-                .Select(lt => new LabTestCatalogueDto
-                {
-                    LabTestId = lt.LabTestId,
-                    TestName  = lt.TestName
-                })
-                .ToListAsync();
-
-            return new PaginationResponse<LabTestCatalogueDto>(items, totalCount, pageNumber, pageSize);
+            return new PaginationResponse<LabTestCatalogueDto>(dtos, totalCount, pageNumber, pageSize);
         }
 
-        /// <inheritdoc />
         public async Task<LabTestCatalogueDto?> GetCatalogueItemAsync(int id)
         {
-            var labTest = await _context.LabTests
-                .FirstOrDefaultAsync(lt => lt.LabTestId == id);
+            var labTest = await _repository.GetCatalogueItemAsync(id);
 
             if (labTest is null)
                 return null;
@@ -121,15 +81,15 @@ namespace Axivora.Services
 
         private static LabResultDto MapToLabResultDto(Models.OrderedTest ot) => new()
         {
-            OrderedTestId = ot.OrderedTestId,
+            OrderedTestId  = ot.OrderedTestId,
             ConsultationId = ot.ConsultationId,
-            LabTestId = ot.LabTestId,
-            TestName = ot.LabTest?.TestName ?? string.Empty,
-            Status = ot.Status,
-            Result = ot.Result,
-            ResultDate = ot.ResultDate,
-            PatientId = ot.Consultation?.Appointment?.PatientId ?? 0,
-            PatientName = ot.Consultation?.Appointment?.Patient?.FullName ?? string.Empty
+            LabTestId      = ot.LabTestId,
+            TestName       = ot.LabTest?.TestName ?? string.Empty,
+            Status         = ot.Status,
+            Result         = ot.Result,
+            ResultDate     = ot.ResultDate,
+            PatientId      = ot.Consultation?.Appointment?.PatientId ?? 0,
+            PatientName    = ot.Consultation?.Appointment?.Patient?.FullName ?? string.Empty
         };
     }
 }

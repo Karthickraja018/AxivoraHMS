@@ -1,28 +1,27 @@
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using System.Security.Cryptography;
-using Axivora.Data;
 using Axivora.DTOs;
 using Axivora.Models;
 using Axivora.Services.Interfaces;
 using Axivora.Security;
+using Axivora.Repositories.Interfaces;
 
 namespace Axivora.Services
 {
     public class AuthService : IAuthService
     {
-        private readonly AxivoraDbContext _context;
+        private readonly IAuthRepository _repository;
         private readonly IConfiguration _configuration;
         private readonly ITokenService _tokenService;
         private readonly IPasswordHasher _passwordHasher;
 
         public AuthService(
-            AxivoraDbContext context,
+            IAuthRepository repository,
             IConfiguration configuration,
             ITokenService tokenService,
             IPasswordHasher passwordHasher)
         {
-            _context = context;
+            _repository = repository;
             _configuration = configuration;
             _tokenService = tokenService;
             _passwordHasher = passwordHasher;
@@ -31,7 +30,7 @@ namespace Axivora.Services
         public async Task<AuthResponseDto> RegisterAsync(RegisterUserDto registerDto)
         {
             // 1. Check if user already exists
-            if (await _context.Users.AnyAsync(u => u.Email == registerDto.Email))
+            if (await _repository.EmailExistsAsync(registerDto.Email))
                 throw new InvalidOperationException("Email already registered.");
 
             // 2. Validate role - Only allow Patient self-registration
@@ -50,21 +49,21 @@ namespace Axivora.Services
                 UpdatedAt = DateTime.UtcNow
             };
 
-            _context.Users.Add(user);
-            await _context.SaveChangesAsync();
+            await _repository.AddUserAsync(user);
+            await _repository.SaveChangesAsync();
 
             // 4. Create role assignment
-            var role = await _context.Roles.FirstOrDefaultAsync(r => r.RoleName == registerDto.Role);
+            var role = await _repository.GetRoleByNameAsync(registerDto.Role);
             if (role == null)
             {
                 // Create role if it doesn't exist
                 role = new Role { RoleName = registerDto.Role };
-                _context.Roles.Add(role);
-                await _context.SaveChangesAsync();
+                await _repository.AddRoleAsync(role);
+                await _repository.SaveChangesAsync();
             }
 
-            _context.UserRoles.Add(new UserRole { UserId = user.UserId, RoleId = role.RoleId });
-            await _context.SaveChangesAsync();
+            await _repository.AddUserRoleAsync(new UserRole { UserId = user.UserId, RoleId = role.RoleId });
+            await _repository.SaveChangesAsync();
 
             // 5. TODO: Send verification email
             // await _emailService.SendVerificationEmailAsync(user.Email, verificationCode);
@@ -75,8 +74,8 @@ namespace Axivora.Services
 
             // 7. Check if profile is completed
             bool profileCompleted = registerDto.Role == "Patient"
-                ? await _context.Patients.AnyAsync(p => p.UserId == user.UserId)
-                : registerDto.Role == "Doctor" && await _context.Doctors.AnyAsync(d => d.UserId == user.UserId);
+                ? await _repository.PatientProfileExistsAsync(user.UserId)
+                : registerDto.Role == "Doctor" && await _repository.DoctorProfileExistsAsync(user.UserId);
 
             return new AuthResponseDto
             {
@@ -94,10 +93,7 @@ namespace Axivora.Services
         public async Task<AuthResponseDto> LoginAsync(LoginDto loginDto)
         {
             // 1. Find user by email
-            var user = await _context.Users
-                .Include(u => u.UserRoles)
-                    .ThenInclude(ur => ur.Role)
-                .FirstOrDefaultAsync(u => u.Email == loginDto.Email);
+            var user = await _repository.GetUserByEmailAsync(loginDto.Email);
 
             if (user == null || user.IsDeleted)
                 throw new UnauthorizedAccessException("Invalid email or password.");
@@ -119,12 +115,12 @@ namespace Axivora.Services
 
             // 6. Check if profile is completed
             bool profileCompleted = roleName == "Patient"
-                ? await _context.Patients.AnyAsync(p => p.UserId == user.UserId)
-                : roleName == "Doctor" && await _context.Doctors.AnyAsync(d => d.UserId == user.UserId);
+                ? await _repository.PatientProfileExistsAsync(user.UserId)
+                : roleName == "Doctor" && await _repository.DoctorProfileExistsAsync(user.UserId);
 
             // 7. Update last login (optional)
             user.UpdatedAt = DateTime.UtcNow;
-            await _context.SaveChangesAsync();
+            await _repository.SaveChangesAsync();
 
             return new AuthResponseDto
             {
@@ -141,11 +137,7 @@ namespace Axivora.Services
 
         public async Task<AuthResponseDto> RefreshTokenAsync(string refreshToken)
         {
-            var storedToken = await _context.RefreshTokens
-                .Include(rt => rt.User)
-                    .ThenInclude(u => u.UserRoles)
-                        .ThenInclude(ur => ur.Role)
-                .FirstOrDefaultAsync(rt => rt.Token == refreshToken);
+            var storedToken = await _repository.GetRefreshTokenAsync(refreshToken);
 
             if (storedToken == null)
                 throw new UnauthorizedAccessException("Invalid refresh token.");
@@ -171,10 +163,10 @@ namespace Axivora.Services
             var newRefreshToken = await CreateRefreshTokenAsync(user.UserId);
 
             bool profileCompleted = roleName == "Patient"
-                ? await _context.Patients.AnyAsync(p => p.UserId == user.UserId)
-                : roleName == "Doctor" && await _context.Doctors.AnyAsync(d => d.UserId == user.UserId);
+                ? await _repository.PatientProfileExistsAsync(user.UserId)
+                : roleName == "Doctor" && await _repository.DoctorProfileExistsAsync(user.UserId);
 
-            await _context.SaveChangesAsync();
+            await _repository.SaveChangesAsync();
 
             return new AuthResponseDto
             {
@@ -191,8 +183,7 @@ namespace Axivora.Services
 
         public async Task<bool> RevokeTokenAsync(string refreshToken, int callerUserId)
         {
-            var storedToken = await _context.RefreshTokens
-                .FirstOrDefaultAsync(rt => rt.Token == refreshToken);
+            var storedToken = await _repository.GetRefreshTokenAsync(refreshToken);
 
             if (storedToken == null || storedToken.IsRevoked)
                 return false;
@@ -202,14 +193,14 @@ namespace Axivora.Services
 
             storedToken.IsRevoked = true;
             storedToken.RevokedAt = DateTime.UtcNow;
-            await _context.SaveChangesAsync();
+            await _repository.SaveChangesAsync();
 
             return true;
         }
 
         public async Task<bool> VerifyEmailAsync(string email, string verificationCode)
         {
-            var user = await _context.Users.FirstOrDefaultAsync(u => u.Email == email);
+            var user = await _repository.GetUserByEmailAsync(email);
             if (user == null)
                 throw new KeyNotFoundException("User not found.");
 
@@ -219,7 +210,7 @@ namespace Axivora.Services
 
         public async Task SendPasswordResetTokenAsync(string email)
         {
-            var user = await _context.Users.FirstOrDefaultAsync(u => u.Email == email);
+            var user = await _repository.GetUserByEmailAsync(email);
             if (user == null)
                 throw new KeyNotFoundException("User not found.");
 
@@ -229,14 +220,14 @@ namespace Axivora.Services
 
         public async Task<bool> ResetPasswordAsync(string email, string resetToken, string newPassword)
         {
-            var user = await _context.Users.FirstOrDefaultAsync(u => u.Email == email);
+            var user = await _repository.GetUserByEmailAsync(email);
             if (user == null)
                 throw new KeyNotFoundException("User not found.");
 
             // Update password
             user.PasswordHash = _passwordHasher.Hash(newPassword);
             user.UpdatedAt = DateTime.UtcNow;
-            await _context.SaveChangesAsync();
+            await _repository.SaveChangesAsync();
 
             return true;
         }
@@ -257,8 +248,8 @@ namespace Axivora.Services
                 IsRevoked = false
             };
 
-            _context.RefreshTokens.Add(refreshToken);
-            await _context.SaveChangesAsync();
+            await _repository.AddRefreshTokenAsync(refreshToken);
+            await _repository.SaveChangesAsync();
 
             return tokenValue;
         }

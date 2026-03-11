@@ -25,6 +25,9 @@ namespace Axivora.Data
 
         // Scheduling & Visits
         public DbSet<DoctorSchedule> DoctorSchedules { get; set; }
+        public DbSet<DoctorAvailabilityTemplate> DoctorAvailabilityTemplates { get; set; }
+        public DbSet<DoctorAvailabilityDay> DoctorAvailabilityDays { get; set; }
+        public DbSet<AppointmentSlot> AppointmentSlots { get; set; }
         public DbSet<AppointmentStatus> AppointmentStatuses { get; set; }
         public DbSet<Appointment> Appointments { get; set; }
 

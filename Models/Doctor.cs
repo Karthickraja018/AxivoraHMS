@@ -35,5 +35,8 @@ namespace Axivora.Models
         public ICollection<DoctorDepartment> DoctorDepartments { get; set; } = new List<DoctorDepartment>();
         public ICollection<DoctorSchedule> DoctorSchedules { get; set; } = new List<DoctorSchedule>();
         public ICollection<Appointment> Appointments { get; set; } = new List<Appointment>();
+        public ICollection<DoctorAvailabilityTemplate> AvailabilityTemplates { get; set; } = new List<DoctorAvailabilityTemplate>();
+        public ICollection<DoctorAvailabilityDay> AvailabilityDays { get; set; } = new List<DoctorAvailabilityDay>();
+        public ICollection<AppointmentSlot> AppointmentSlots { get; set; } = new List<AppointmentSlot>();
     }
 }

@@ -1,59 +1,44 @@
 using AutoMapper;
-using Microsoft.EntityFrameworkCore;
-using Axivora.Data;
 using Axivora.DTOs;
 using Axivora.Models;
 using Axivora.Services.Interfaces;
 using Axivora.Helpers;
 using Axivora.Security;
+using Axivora.Repositories.Interfaces;
 
 namespace Axivora.Services
 {
     public class PatientService : IPatientService
     {
-        private readonly AxivoraDbContext _context;
+        private readonly IPatientRepository _repository;
         private readonly IMapper _mapper;
         private readonly IPasswordHasher _passwordHasher;
         private readonly ILogger<PatientService> _logger;
 
         public PatientService(
-            AxivoraDbContext context,
+            IPatientRepository repository,
             IMapper mapper,
             IPasswordHasher passwordHasher,
             ILogger<PatientService> logger)
         {
-            _context = context;
+            _repository = repository;
             _mapper = mapper;
             _passwordHasher = passwordHasher;
             _logger = logger;
         }
 
-        // ?? Reusable base query (read-only, with standard includes) ???????????
-        private IQueryable<Patient> ActivePatients() =>
-            _context.Patients
-                .Include(p => p.Address)
-                .Include(p => p.PatientAllergies)
-                .Where(p => !p.IsDeleted)
-                .AsNoTracking();
-
-        // ?????????????????????????????????????????????????????????????????????
-
         public async Task<IEnumerable<PatientDto>> GetAllPatientsAsync()
         {
-            var patients = await ActivePatients().ToListAsync();
+            var patients = await _repository.GetAllActiveAsync();
             return _mapper.Map<IEnumerable<PatientDto>>(patients);
         }
 
         public async Task<PaginationResponse<PatientDto>> GetAllPatientsAsync(PaginationParams paginationParams)
         {
-            var query = ActivePatients();
-            var totalCount = await query.CountAsync();
-
-            var patients = await query
-                .OrderBy(p => p.FullName)
-                .Skip((paginationParams.PageNumber - 1) * paginationParams.PageSize)
-                .Take(paginationParams.PageSize)
-                .ToListAsync();
+            var totalCount = await _repository.CountActiveAsync();
+            var patients = await _repository.GetPagedActiveAsync(
+                (paginationParams.PageNumber - 1) * paginationParams.PageSize,
+                paginationParams.PageSize);
 
             return new PaginationResponse<PatientDto>(
                 _mapper.Map<IEnumerable<PatientDto>>(patients),
@@ -64,8 +49,7 @@ namespace Axivora.Services
 
         public async Task<PatientDto> GetPatientByIdAsync(int patientId)
         {
-            var patient = await ActivePatients()
-                .FirstOrDefaultAsync(p => p.PatientId == patientId);
+            var patient = await _repository.GetByIdAsync(patientId);
 
             if (patient is null)
                 throw new KeyNotFoundException($"Patient with ID {patientId} not found.");
@@ -75,8 +59,7 @@ namespace Axivora.Services
 
         public async Task<PatientDto> GetPatientByMRNAsync(string mrn)
         {
-            var patient = await ActivePatients()
-                .FirstOrDefaultAsync(p => p.MRN == mrn);
+            var patient = await _repository.GetByMRNAsync(mrn);
 
             if (patient is null)
                 throw new KeyNotFoundException($"Patient with MRN {mrn} not found.");
@@ -86,8 +69,7 @@ namespace Axivora.Services
 
         public async Task<PatientDto> GetPatientByUserIdAsync(int userId)
         {
-            var patient = await ActivePatients()
-                .FirstOrDefaultAsync(p => p.UserId == userId);
+            var patient = await _repository.GetByUserIdAsync(userId);
 
             if (patient is null)
                 throw new KeyNotFoundException($"Patient profile not found for user ID {userId}.");
@@ -100,14 +82,11 @@ namespace Axivora.Services
         /// </summary>
         public async Task<PatientDto> CompleteProfileAsync(int userId, CompletePatientProfileDto profileDto)
         {
-            var user = await _context.Users.FindAsync(userId);
+            var user = await _repository.GetUserByIdAsync(userId);
             if (user is null || user.IsDeleted || !user.IsActive)
                 throw new UnauthorizedAccessException("Invalid user.");
 
-            // Check ALL records including soft-deleted ones.
-            var existingPatient = await _context.Patients
-                .IgnoreQueryFilters()
-                .FirstOrDefaultAsync(p => p.UserId == userId);
+            var existingPatient = await _repository.GetByUserIdIncludingDeletedAsync(userId);
 
             if (existingPatient is not null)
             {
@@ -128,11 +107,10 @@ namespace Axivora.Services
         /// </summary>
         public async Task<PatientDto> CreatePatientAsync(CreatePatientDto createPatientDto)
         {
-            if (await _context.Users.AnyAsync(u => u.Email == createPatientDto.Email))
-                throw new InvalidOperationException(
-                    $"User with email {createPatientDto.Email} already exists.");
+            if (await _repository.EmailExistsAsync(createPatientDto.Email))
+                throw new InvalidOperationException($"User with email {createPatientDto.Email} already exists.");
 
-            await using var transaction = await _context.Database.BeginTransactionAsync();
+            await _repository.BeginTransactionAsync();
             try
             {
                 var user = new User
@@ -144,8 +122,8 @@ namespace Axivora.Services
                     CreatedAt = DateTime.UtcNow,
                     UpdatedAt = DateTime.UtcNow
                 };
-                _context.Users.Add(user);
-                await _context.SaveChangesAsync();
+                await _repository.AddUserAsync(user);
+                await _repository.SaveChangesAsync();
 
                 var address = await CreateAddressAsync(createPatientDto.Address);
 
@@ -163,13 +141,13 @@ namespace Axivora.Services
                     IsDeleted = false,
                     CreatedAt = DateTime.UtcNow
                 };
-                _context.Patients.Add(patient);
-                await _context.SaveChangesAsync();
+                await _repository.AddPatientAsync(patient);
+                await _repository.SaveChangesAsync();
 
                 patient.MRN = GenerateMRN(patient.PatientId);
-                await _context.SaveChangesAsync();
+                await _repository.SaveChangesAsync();
 
-                await transaction.CommitAsync();
+                await _repository.CommitTransactionAsync();
 
                 _logger.LogInformation(
                     "Admin created patient {PatientId} (MRN: {MRN}) for user {UserId}.",
@@ -179,7 +157,7 @@ namespace Axivora.Services
             }
             catch (Exception ex)
             {
-                await transaction.RollbackAsync();
+                await _repository.RollbackTransactionAsync();
                 _logger.LogError(ex, "Failed to create patient for email {Email}.", createPatientDto.Email);
                 throw;
             }
@@ -187,9 +165,9 @@ namespace Axivora.Services
 
         public async Task<PatientDto> UpdatePatientAsync(int patientId, UpdatePatientDto updatePatientDto)
         {
-            var patient = await _context.Patients.FindAsync(patientId);
+            var patient = await _repository.GetByIdAsync(patientId);
 
-            if (patient is null || patient.IsDeleted)
+            if (patient is null)
                 throw new KeyNotFoundException($"Patient with ID {patientId} not found.");
 
             _mapper.Map(updatePatientDto, patient);
@@ -200,7 +178,7 @@ namespace Axivora.Services
                 await UpsertAddressAsync(patient, createAddressDto);
             }
 
-            await _context.SaveChangesAsync();
+            await _repository.SaveChangesAsync();
 
             _logger.LogInformation("Updated patient {PatientId}.", patientId);
             return await GetPatientByIdAsync(patientId);
@@ -208,13 +186,13 @@ namespace Axivora.Services
 
         public async Task<bool> DeletePatientAsync(int patientId)
         {
-            var patient = await _context.Patients.FindAsync(patientId);
+            var patient = await _repository.GetByIdForUpdateAsync(patientId);
 
             if (patient is null)
                 throw new KeyNotFoundException($"Patient with ID {patientId} not found.");
 
             patient.IsDeleted = true;
-            await _context.SaveChangesAsync();
+            await _repository.SaveChangesAsync();
 
             _logger.LogInformation("Soft-deleted patient {PatientId}.", patientId);
             return true;
@@ -226,17 +204,7 @@ namespace Axivora.Services
                 return [];
 
             var pattern = $"%{searchTerm.Trim()}%";
-
-            var patients = await _context.Patients
-                .Include(p => p.Address)
-                .Include(p => p.PatientAllergies)
-                .Where(p => !p.IsDeleted && (
-                    EF.Functions.Like(p.FullName, pattern) ||
-                    EF.Functions.Like(p.MRN, pattern) ||
-                    (p.PhoneNumber != null && EF.Functions.Like(p.PhoneNumber, pattern))))
-                .AsNoTracking()
-                .ToListAsync();
-
+            var patients = await _repository.SearchAsync(pattern);
             return _mapper.Map<IEnumerable<PatientDto>>(patients);
         }
 
@@ -244,7 +212,7 @@ namespace Axivora.Services
 
         private async Task<PatientDto> RestorePatientAsync(Patient patient, CompletePatientProfileDto profileDto)
         {
-            await using var transaction = await _context.Database.BeginTransactionAsync();
+            await _repository.BeginTransactionAsync();
             try
             {
                 await UpsertAddressAsync(patient, profileDto.Address);
@@ -258,15 +226,15 @@ namespace Axivora.Services
                 patient.IsDeleted = false;
                 patient.CreatedAt = DateTime.UtcNow;
 
-                _context.Patients.Update(patient);
-                await _context.SaveChangesAsync();
-                await transaction.CommitAsync();
+                await _repository.UpdatePatientAsync(patient);
+                await _repository.SaveChangesAsync();
+                await _repository.CommitTransactionAsync();
 
                 return await GetPatientByIdAsync(patient.PatientId);
             }
             catch (Exception ex)
             {
-                await transaction.RollbackAsync();
+                await _repository.RollbackTransactionAsync();
                 _logger.LogError(ex, "Failed to restore patient profile for patient {PatientId}.", patient.PatientId);
                 throw;
             }
@@ -274,7 +242,7 @@ namespace Axivora.Services
 
         private async Task<PatientDto> CreateNewPatientAsync(int userId, CompletePatientProfileDto profileDto)
         {
-            await using var transaction = await _context.Database.BeginTransactionAsync();
+            await _repository.BeginTransactionAsync();
             try
             {
                 var address = await CreateAddressAsync(profileDto.Address);
@@ -293,42 +261,37 @@ namespace Axivora.Services
                     IsDeleted = false,
                     CreatedAt = DateTime.UtcNow
                 };
-                _context.Patients.Add(patient);
-                await _context.SaveChangesAsync();
+                await _repository.AddPatientAsync(patient);
+                await _repository.SaveChangesAsync();
 
                 patient.MRN = GenerateMRN(patient.PatientId);
-                await _context.SaveChangesAsync();
+                await _repository.SaveChangesAsync();
 
-                await transaction.CommitAsync();
+                await _repository.CommitTransactionAsync();
                 return await GetPatientByIdAsync(patient.PatientId);
             }
             catch (Exception ex)
             {
-                await transaction.RollbackAsync();
+                await _repository.RollbackTransactionAsync();
                 _logger.LogError(ex, "Failed to create new patient profile for user {UserId}.", userId);
                 throw;
             }
         }
 
-        /// <summary>Creates a new Address row and returns it.</summary>
         private async Task<Address> CreateAddressAsync(CreateAddressDto dto)
         {
             var address = _mapper.Map<Address>(dto);
             address.CreatedAt = DateTime.UtcNow;
-            _context.Addresses.Add(address);
-            await _context.SaveChangesAsync();
+            await _repository.AddAddressAsync(address);
+            await _repository.SaveChangesAsync();
             return address;
         }
 
-        /// <summary>
-        /// Updates an existing address if found, otherwise creates a new one and
-        /// links it to the patient.
-        /// </summary>
         private async Task UpsertAddressAsync(Patient patient, CreateAddressDto dto)
         {
             if (patient.AddressId > 0)
             {
-                var existing = await _context.Addresses.FindAsync(patient.AddressId);
+                var existing = await _repository.GetAddressByIdAsync(patient.AddressId);
                 if (existing is not null)
                 {
                     _mapper.Map(dto, existing);

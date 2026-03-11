@@ -1,24 +1,22 @@
-using Microsoft.EntityFrameworkCore;
-using Axivora.Data;
 using Axivora.DTOs;
 using Axivora.Models;
 using Axivora.Services.Interfaces;
+using Axivora.Repositories.Interfaces;
 
 namespace Axivora.Services
 {
     public class DoctorScheduleService : IDoctorScheduleService
     {
-        private readonly AxivoraDbContext _context;
+        private readonly IDoctorScheduleRepository _repository;
 
-        public DoctorScheduleService(AxivoraDbContext context)
+        public DoctorScheduleService(IDoctorScheduleRepository repository)
         {
-            _context = context;
+            _repository = repository;
         }
 
         public async Task<DoctorScheduleDto> CreateScheduleAsync(int doctorId, CreateScheduleDto dto)
         {
-            var doctor = await _context.Doctors
-                .FirstOrDefaultAsync(d => d.DoctorId == doctorId && !d.IsDeleted);
+            var doctor = await _repository.GetDoctorByIdAsync(doctorId);
 
             if (doctor == null)
                 throw new KeyNotFoundException($"Doctor with ID {doctorId} not found.");
@@ -26,14 +24,9 @@ namespace Axivora.Services
             if (dto.EndTime <= dto.StartTime)
                 throw new ArgumentException("EndTime must be after StartTime.");
 
-            var existingActiveSchedules = await _context.DoctorSchedules
-                .Where(s => s.DoctorId == doctorId && s.IsActive && s.DayOfWeek == dto.DayOfWeek)
-                .ToListAsync();
+            var existingActiveSchedules = await _repository.GetActiveSiblingSchedulesAsync(doctorId, dto.DayOfWeek);
 
-            var hasOverlap = existingActiveSchedules
-                .Any(s => s.StartTime < dto.EndTime && s.EndTime > dto.StartTime);
-
-            if (hasOverlap)
+            if (existingActiveSchedules.Any(s => s.StartTime < dto.EndTime && s.EndTime > dto.StartTime))
                 throw new InvalidOperationException(
                     $"A schedule for {(System.DayOfWeek)dto.DayOfWeek} already overlaps with the requested time range.");
 
@@ -47,23 +40,20 @@ namespace Axivora.Services
                 IsActive = true
             };
 
-            _context.DoctorSchedules.Add(schedule);
-            await _context.SaveChangesAsync();
+            await _repository.AddScheduleAsync(schedule);
+            await _repository.SaveChangesAsync();
 
             return MapToDto(schedule, doctor.FullName);
         }
 
         public async Task<IEnumerable<DoctorScheduleDto>> GetSchedulesByDoctorAsync(int doctorId)
         {
-            var doctor = await _context.Doctors
-                .FirstOrDefaultAsync(d => d.DoctorId == doctorId && !d.IsDeleted);
+            var doctor = await _repository.GetDoctorByIdAsync(doctorId);
 
             if (doctor == null)
                 throw new KeyNotFoundException($"Doctor with ID {doctorId} not found.");
 
-            var schedules = await _context.DoctorSchedules
-                .Where(s => s.DoctorId == doctorId)
-                .ToListAsync();
+            var schedules = await _repository.GetByDoctorIdAsync(doctorId);
 
             return schedules
                 .OrderBy(s => s.DayOfWeek)
@@ -73,17 +63,14 @@ namespace Axivora.Services
 
         public async Task<DoctorScheduleDto> UpdateScheduleAsync(int scheduleId, UpdateScheduleDto dto, int callerUserId, string callerRole)
         {
-            var schedule = await _context.DoctorSchedules
-                .Include(s => s.Doctor)
-                .FirstOrDefaultAsync(s => s.ScheduleId == scheduleId);
+            var schedule = await _repository.GetByIdWithDoctorAsync(scheduleId);
 
             if (schedule == null)
                 throw new KeyNotFoundException($"Schedule with ID {scheduleId} not found.");
 
             if (callerRole != "Admin")
             {
-                var callerDoctor = await _context.Doctors
-                    .FirstOrDefaultAsync(d => d.UserId == callerUserId && !d.IsDeleted);
+                var callerDoctor = await _repository.GetDoctorByUserIdAsync(callerUserId);
 
                 if (callerDoctor == null || schedule.DoctorId != callerDoctor.DoctorId)
                     throw new UnauthorizedAccessException(
@@ -97,17 +84,9 @@ namespace Axivora.Services
             if (newEnd <= newStart)
                 throw new ArgumentException("EndTime must be after StartTime.");
 
-            var siblingsOnDay = await _context.DoctorSchedules
-                .Where(s => s.DoctorId == schedule.DoctorId
-                    && s.ScheduleId != scheduleId
-                    && s.IsActive
-                    && s.DayOfWeek == newDay)
-                .ToListAsync();
+            var siblings = await _repository.GetActiveSiblingSchedulesAsync(schedule.DoctorId, newDay, scheduleId);
 
-            var hasOverlap = siblingsOnDay
-                .Any(s => s.StartTime < newEnd && s.EndTime > newStart);
-
-            if (hasOverlap)
+            if (siblings.Any(s => s.StartTime < newEnd && s.EndTime > newStart))
                 throw new InvalidOperationException(
                     $"Updating this schedule would overlap with an existing schedule on {(System.DayOfWeek)newDay}.");
 
@@ -117,30 +96,29 @@ namespace Axivora.Services
             if (dto.SlotDurationMinutes.HasValue) schedule.SlotDurationMinutes = dto.SlotDurationMinutes.Value;
             if (dto.IsActive.HasValue) schedule.IsActive = dto.IsActive.Value;
 
-            await _context.SaveChangesAsync();
+            await _repository.SaveChangesAsync();
 
             return MapToDto(schedule, schedule.Doctor!.FullName);
         }
 
         public async Task DeleteScheduleAsync(int scheduleId, int callerUserId, string callerRole)
         {
-            var schedule = await _context.DoctorSchedules.FindAsync(scheduleId);
+            var schedule = await _repository.GetByIdAsync(scheduleId);
 
             if (schedule == null)
                 throw new KeyNotFoundException($"Schedule with ID {scheduleId} not found.");
 
             if (callerRole != "Admin")
             {
-                var callerDoctor = await _context.Doctors
-                    .FirstOrDefaultAsync(d => d.UserId == callerUserId && !d.IsDeleted);
+                var callerDoctor = await _repository.GetDoctorByUserIdAsync(callerUserId);
 
                 if (callerDoctor == null || schedule.DoctorId != callerDoctor.DoctorId)
                     throw new UnauthorizedAccessException(
                         "You are not authorized to delete another doctor's schedule.");
             }
 
-            _context.DoctorSchedules.Remove(schedule);
-            await _context.SaveChangesAsync();
+            await _repository.RemoveScheduleAsync(schedule);
+            await _repository.SaveChangesAsync();
         }
 
         private static DoctorScheduleDto MapToDto(DoctorSchedule schedule, string doctorName) => new()

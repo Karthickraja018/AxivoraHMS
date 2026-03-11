@@ -1,39 +1,21 @@
-using Microsoft.EntityFrameworkCore;
-using Axivora.Data;
 using Axivora.DTOs;
 using Axivora.Services.Interfaces;
+using Axivora.Repositories.Interfaces;
 
 namespace Axivora.Services
 {
     public class MedicalHistoryService : IMedicalHistoryService
     {
-        private readonly AxivoraDbContext _context;
+        private readonly IMedicalHistoryRepository _repository;
 
-        public MedicalHistoryService(AxivoraDbContext context)
+        public MedicalHistoryService(IMedicalHistoryRepository repository)
         {
-            _context = context;
+            _repository = repository;
         }
 
         public async Task<MedicalHistoryDto> GetMedicalHistoryByPatientIdAsync(int patientId)
         {
-            var patient = await _context.Patients
-                .Include(p => p.PatientAllergies)
-                .Include(p => p.Appointments.Where(a => !a.IsDeleted))
-                    .ThenInclude(a => a.Status)
-                .Include(p => p.Appointments)
-                    .ThenInclude(a => a.Doctor)
-                .Include(p => p.Appointments)
-                    .ThenInclude(a => a.Consultation)
-                        .ThenInclude(c => c!.ICDCode)
-                .Include(p => p.Appointments)
-                    .ThenInclude(a => a.Consultation)
-                        .ThenInclude(c => c!.Prescriptions)
-                            .ThenInclude(pr => pr.Medicine)
-                .Include(p => p.Appointments)
-                    .ThenInclude(a => a.Consultation)
-                        .ThenInclude(c => c!.OrderedTests)
-                            .ThenInclude(ot => ot.LabTest)
-                .FirstOrDefaultAsync(p => p.PatientId == patientId && !p.IsDeleted);
+            var patient = await _repository.GetPatientWithFullHistoryByIdAsync(patientId);
 
             if (patient == null)
                 throw new KeyNotFoundException($"Patient with ID {patientId} not found.");
@@ -43,24 +25,7 @@ namespace Axivora.Services
 
         public async Task<MedicalHistoryDto> GetMyMedicalHistoryAsync(int userId)
         {
-            var patient = await _context.Patients
-                .Include(p => p.PatientAllergies)
-                .Include(p => p.Appointments.Where(a => !a.IsDeleted))
-                    .ThenInclude(a => a.Status)
-                .Include(p => p.Appointments)
-                    .ThenInclude(a => a.Doctor)
-                .Include(p => p.Appointments)
-                    .ThenInclude(a => a.Consultation)
-                        .ThenInclude(c => c!.ICDCode)
-                .Include(p => p.Appointments)
-                    .ThenInclude(a => a.Consultation)
-                        .ThenInclude(c => c!.Prescriptions)
-                            .ThenInclude(pr => pr.Medicine)
-                .Include(p => p.Appointments)
-                    .ThenInclude(a => a.Consultation)
-                        .ThenInclude(c => c!.OrderedTests)
-                            .ThenInclude(ot => ot.LabTest)
-                .FirstOrDefaultAsync(p => p.UserId == userId && !p.IsDeleted);
+            var patient = await _repository.GetPatientWithFullHistoryByUserIdAsync(userId);
 
             if (patient == null)
                 throw new KeyNotFoundException("Patient profile not found. Please complete your profile first.");
@@ -124,9 +89,7 @@ namespace Axivora.Services
                 DateOfBirth = patient.DateOfBirth,
                 Gender = patient.Gender,
                 BloodGroup = patient.BloodGroup,
-                Allergies = patient.PatientAllergies
-                    .Select(a => a.AllergenName)
-                    .ToList(),
+                Allergies = patient.PatientAllergies.Select(a => a.AllergenName).ToList(),
                 Visits = visits
             };
         }

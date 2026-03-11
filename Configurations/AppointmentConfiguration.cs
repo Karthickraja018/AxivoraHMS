@@ -24,6 +24,8 @@ namespace Axivora.Configurations
             builder.Property(apt => apt.StatusId)
                    .IsRequired();
 
+            builder.Property(apt => apt.SlotId);
+
             builder.Property(apt => apt.AppointmentStart)
                    .IsRequired();
 

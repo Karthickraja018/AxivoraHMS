@@ -1,62 +1,38 @@
 using AutoMapper;
-using Microsoft.EntityFrameworkCore;
-using Axivora.Data;
 using Axivora.DTOs;
 using Axivora.Models;
 using Axivora.Services.Interfaces;
 using Axivora.Helpers;
+using Axivora.Repositories.Interfaces;
 
 namespace Axivora.Services
 {
     public class ConsultationService : IConsultationService
     {
-        private readonly AxivoraDbContext _context;
+        private readonly IConsultationRepository _repository;
         private readonly IMapper _mapper;
 
-        public ConsultationService(AxivoraDbContext context, IMapper mapper)
+        public ConsultationService(IConsultationRepository repository, IMapper mapper)
         {
-            _context = context;
+            _repository = repository;
             _mapper = mapper;
         }
 
         public async Task<IEnumerable<ConsultationDto>> GetAllConsultationsAsync()
         {
-            var consultations = await _context.Consultations
-                .Include(c => c.ICDCode)
-                .Include(c => c.Appointment)
-                    .ThenInclude(a => a.Doctor)
-                .Include(c => c.Prescriptions)
-                    .ThenInclude(p => p.Medicine)
-                .Include(c => c.OrderedTests)
-                    .ThenInclude(ot => ot.LabTest)
-                .ToListAsync();
-
+            var consultations = await _repository.GetAllAsync();
             return _mapper.Map<IEnumerable<ConsultationDto>>(consultations);
         }
 
         public async Task<PaginationResponse<ConsultationDto>> GetAllConsultationsAsync(PaginationParams paginationParams)
         {
-            var query = _context.Consultations
-                .Include(c => c.ICDCode)
-                .Include(c => c.Appointment)
-                    .ThenInclude(a => a.Doctor)
-                .Include(c => c.Prescriptions)
-                    .ThenInclude(p => p.Medicine)
-                .Include(c => c.OrderedTests)
-                    .ThenInclude(ot => ot.LabTest);
-
-            var totalCount = await query.CountAsync();
-
-            var consultations = await query
-                .OrderByDescending(c => c.CreatedAt)
-                .Skip((paginationParams.PageNumber - 1) * paginationParams.PageSize)
-                .Take(paginationParams.PageSize)
-                .ToListAsync();
-
-            var consultationDtos = _mapper.Map<IEnumerable<ConsultationDto>>(consultations);
+            var totalCount = await _repository.CountAsync();
+            var consultations = await _repository.GetPagedAsync(
+                (paginationParams.PageNumber - 1) * paginationParams.PageSize,
+                paginationParams.PageSize);
 
             return new PaginationResponse<ConsultationDto>(
-                consultationDtos,
+                _mapper.Map<IEnumerable<ConsultationDto>>(consultations),
                 totalCount,
                 paginationParams.PageNumber,
                 paginationParams.PageSize);
@@ -64,15 +40,7 @@ namespace Axivora.Services
 
         public async Task<ConsultationDto> GetConsultationByIdAsync(int consultationId)
         {
-            var consultation = await _context.Consultations
-                .Include(c => c.ICDCode)
-                .Include(c => c.Appointment)
-                    .ThenInclude(a => a.Doctor)
-                .Include(c => c.Prescriptions)
-                    .ThenInclude(p => p.Medicine)
-                .Include(c => c.OrderedTests)
-                    .ThenInclude(ot => ot.LabTest)
-                .FirstOrDefaultAsync(c => c.ConsultationId == consultationId);
+            var consultation = await _repository.GetByIdAsync(consultationId);
 
             if (consultation == null)
                 throw new KeyNotFoundException($"Consultation with ID {consultationId} not found.");
@@ -82,15 +50,7 @@ namespace Axivora.Services
 
         public async Task<ConsultationDto> GetConsultationByAppointmentIdAsync(int appointmentId)
         {
-            var consultation = await _context.Consultations
-                .Include(c => c.ICDCode)
-                .Include(c => c.Appointment)
-                    .ThenInclude(a => a.Doctor)
-                .Include(c => c.Prescriptions)
-                    .ThenInclude(p => p.Medicine)
-                .Include(c => c.OrderedTests)
-                    .ThenInclude(ot => ot.LabTest)
-                .FirstOrDefaultAsync(c => c.AppointmentId == appointmentId);
+            var consultation = await _repository.GetByAppointmentIdAsync(appointmentId);
 
             if (consultation == null)
                 throw new KeyNotFoundException($"Consultation for appointment {appointmentId} not found.");
@@ -98,36 +58,16 @@ namespace Axivora.Services
             return _mapper.Map<ConsultationDto>(consultation);
         }
 
-        /// <summary>
-        /// Returns a paginated list of consultations belonging to the specified patient.
-        /// </summary>
-        /// <param name="patientId">The patient's identifier.</param>
-        /// <param name="paginationParams">Pagination settings (page number and page size).</param>
-        /// <returns>A <see cref="PaginationResponse{ConsultationDto}"/> for the patient's consultations.</returns>
         public async Task<PaginationResponse<ConsultationDto>> GetConsultationsByPatientIdAsync(int patientId, PaginationParams paginationParams)
         {
-            var query = _context.Consultations
-                .Include(c => c.ICDCode)
-                .Include(c => c.Appointment)
-                    .ThenInclude(a => a.Doctor)
-                .Include(c => c.Prescriptions)
-                    .ThenInclude(p => p.Medicine)
-                .Include(c => c.OrderedTests)
-                    .ThenInclude(ot => ot.LabTest)
-                .Where(c => c.Appointment != null && c.Appointment.PatientId == patientId);
-
-            var totalCount = await query.CountAsync();
-
-            var consultations = await query
-                .OrderByDescending(c => c.CreatedAt)
-                .Skip((paginationParams.PageNumber - 1) * paginationParams.PageSize)
-                .Take(paginationParams.PageSize)
-                .ToListAsync();
-
-            var consultationDtos = _mapper.Map<IEnumerable<ConsultationDto>>(consultations);
+            var totalCount = await _repository.CountByPatientAsync(patientId);
+            var consultations = await _repository.GetPagedByPatientAsync(
+                patientId,
+                (paginationParams.PageNumber - 1) * paginationParams.PageSize,
+                paginationParams.PageSize);
 
             return new PaginationResponse<ConsultationDto>(
-                consultationDtos,
+                _mapper.Map<IEnumerable<ConsultationDto>>(consultations),
                 totalCount,
                 paginationParams.PageNumber,
                 paginationParams.PageSize);
@@ -135,15 +75,10 @@ namespace Axivora.Services
 
         public async Task<ConsultationDto> CreateConsultationAsync(CreateConsultationDto createConsultationDto)
         {
-            var existingConsultation = await _context.Consultations
-                .AnyAsync(c => c.AppointmentId == createConsultationDto.AppointmentId);
-
-            if (existingConsultation)
+            if (await _repository.ExistsForAppointmentAsync(createConsultationDto.AppointmentId))
                 throw new InvalidOperationException("A consultation already exists for this appointment.");
 
-            var appointment = await _context.Appointments
-                .Include(a => a.Status)
-                .FirstOrDefaultAsync(a => a.AppointmentId == createConsultationDto.AppointmentId);
+            var appointment = await _repository.GetAppointmentWithStatusAsync(createConsultationDto.AppointmentId);
 
             if (appointment == null)
                 throw new KeyNotFoundException($"Appointment with ID {createConsultationDto.AppointmentId} not found.");
@@ -153,8 +88,8 @@ namespace Axivora.Services
             var consultation = _mapper.Map<Consultation>(createConsultationDto);
             consultation.CreatedAt = DateTime.UtcNow;
 
-            _context.Consultations.Add(consultation);
-            await _context.SaveChangesAsync();
+            await _repository.AddConsultationAsync(consultation);
+            await _repository.SaveChangesAsync();
 
             return await GetConsultationByIdAsync(consultation.ConsultationId);
         }
@@ -163,15 +98,12 @@ namespace Axivora.Services
         {
             if (callerRole != "Admin")
             {
-                var doctor = await _context.Doctors
-                    .FirstOrDefaultAsync(d => d.UserId == callerUserId && !d.IsDeleted);
+                var doctor = await _repository.GetDoctorByUserIdAsync(callerUserId);
 
                 if (doctor == null)
                     throw new KeyNotFoundException("Doctor profile not found.");
 
-                var appointment = await _context.Appointments
-                    .Include(a => a.Status)
-                    .FirstOrDefaultAsync(a => a.AppointmentId == createConsultationDto.AppointmentId);
+                var appointment = await _repository.GetAppointmentWithStatusAsync(createConsultationDto.AppointmentId);
 
                 if (appointment == null)
                     throw new KeyNotFoundException($"Appointment with ID {createConsultationDto.AppointmentId} not found.");
@@ -182,7 +114,6 @@ namespace Axivora.Services
 
                 ValidateAppointmentStatusForConsultation(appointment);
 
-                // Appointment already validated — skip the duplicate lookup in the unguarded overload
                 return await CreateConsultationSkippingAppointmentLookupAsync(createConsultationDto);
             }
 
@@ -191,23 +122,19 @@ namespace Axivora.Services
 
         private async Task<ConsultationDto> CreateConsultationSkippingAppointmentLookupAsync(CreateConsultationDto createConsultationDto)
         {
-            var existingConsultation = await _context.Consultations
-                .AnyAsync(c => c.AppointmentId == createConsultationDto.AppointmentId);
-
-            if (existingConsultation)
+            if (await _repository.ExistsForAppointmentAsync(createConsultationDto.AppointmentId))
                 throw new InvalidOperationException("A consultation already exists for this appointment.");
 
             var consultation = _mapper.Map<Consultation>(createConsultationDto);
             consultation.CreatedAt = DateTime.UtcNow;
 
-            _context.Consultations.Add(consultation);
-            await _context.SaveChangesAsync();
+            await _repository.AddConsultationAsync(consultation);
+            await _repository.SaveChangesAsync();
 
             return await GetConsultationByIdAsync(consultation.ConsultationId);
         }
 
-        private static readonly HashSet<string> _clinicalStatuses =
-            ["Checked-In", "In Progress", "Completed"];
+        private static readonly HashSet<string> _clinicalStatuses = ["Checked-In", "In Progress", "Completed"];
 
         private static void ValidateAppointmentStatusForConsultation(Appointment appointment)
         {
@@ -219,47 +146,43 @@ namespace Axivora.Services
 
         public async Task<ConsultationDto> UpdateConsultationAsync(int consultationId, UpdateConsultationDto updateConsultationDto)
         {
-            var consultation = await _context.Consultations.FindAsync(consultationId);
+            var consultation = await _repository.GetByIdAsync(consultationId);
 
             if (consultation == null)
                 throw new KeyNotFoundException($"Consultation with ID {consultationId} not found.");
 
-            // AppointmentId is immutable after creation — preserve it across the mapping.
             var originalAppointmentId = consultation.AppointmentId;
             _mapper.Map(updateConsultationDto, consultation);
             consultation.AppointmentId = originalAppointmentId;
 
-            await _context.SaveChangesAsync();
+            await _repository.SaveChangesAsync();
 
             return await GetConsultationByIdAsync(consultationId);
         }
 
         public async Task<ConsultationDto> AddPrescriptionAsync(int consultationId, CreatePrescriptionDto prescriptionDto)
         {
-            var consultation = await _context.Consultations.FindAsync(consultationId);
+            var consultation = await _repository.GetByIdAsync(consultationId);
 
             if (consultation == null)
                 throw new KeyNotFoundException($"Consultation with ID {consultationId} not found.");
 
-            var alreadyPrescribed = await _context.Prescriptions
-                .AnyAsync(p => p.ConsultationId == consultationId && p.MedicineId == prescriptionDto.MedicineId);
-
-            if (alreadyPrescribed)
+            if (await _repository.IsMedicineAlreadyPrescribedAsync(consultationId, prescriptionDto.MedicineId))
                 throw new InvalidOperationException(
                     $"Medicine with ID {prescriptionDto.MedicineId} has already been prescribed in this consultation.");
 
             var prescription = _mapper.Map<Prescription>(prescriptionDto);
             prescription.ConsultationId = consultationId;
 
-            _context.Prescriptions.Add(prescription);
-            await _context.SaveChangesAsync();
+            await _repository.AddPrescriptionAsync(prescription);
+            await _repository.SaveChangesAsync();
 
             return await GetConsultationByIdAsync(consultationId);
         }
 
         public async Task<ConsultationDto> AddLabTestAsync(int consultationId, CreateOrderedTestDto orderedTestDto)
         {
-            var consultation = await _context.Consultations.FindAsync(consultationId);
+            var consultation = await _repository.GetByIdAsync(consultationId);
 
             if (consultation == null)
                 throw new KeyNotFoundException($"Consultation with ID {consultationId} not found.");
@@ -268,42 +191,27 @@ namespace Axivora.Services
             orderedTest.ConsultationId = consultationId;
             orderedTest.Status = "Pending";
 
-            _context.OrderedTests.Add(orderedTest);
-            await _context.SaveChangesAsync();
+            await _repository.AddOrderedTestAsync(orderedTest);
+            await _repository.SaveChangesAsync();
 
             return await GetConsultationByIdAsync(consultationId);
         }
 
         public async Task<PaginationResponse<ConsultationDto>> GetConsultationsByDoctorUserIdAsync(int userId, PaginationParams paginationParams)
         {
-            var doctor = await _context.Doctors
-                .FirstOrDefaultAsync(d => d.UserId == userId && !d.IsDeleted);
+            var doctor = await _repository.GetDoctorByUserIdAsync(userId);
 
             if (doctor == null)
                 throw new KeyNotFoundException("Doctor profile not found.");
 
-            var query = _context.Consultations
-                .Include(c => c.ICDCode)
-                .Include(c => c.Appointment)
-                    .ThenInclude(a => a.Doctor)
-                .Include(c => c.Prescriptions)
-                    .ThenInclude(p => p.Medicine)
-                .Include(c => c.OrderedTests)
-                    .ThenInclude(ot => ot.LabTest)
-                .Where(c => c.Appointment != null && c.Appointment.DoctorId == doctor.DoctorId);
-
-            var totalCount = await query.CountAsync();
-
-            var consultations = await query
-                .OrderByDescending(c => c.CreatedAt)
-                .Skip((paginationParams.PageNumber - 1) * paginationParams.PageSize)
-                .Take(paginationParams.PageSize)
-                .ToListAsync();
-
-            var consultationDtos = _mapper.Map<IEnumerable<ConsultationDto>>(consultations);
+            var totalCount = await _repository.CountByDoctorAsync(doctor.DoctorId);
+            var consultations = await _repository.GetPagedByDoctorAsync(
+                doctor.DoctorId,
+                (paginationParams.PageNumber - 1) * paginationParams.PageSize,
+                paginationParams.PageSize);
 
             return new PaginationResponse<ConsultationDto>(
-                consultationDtos,
+                _mapper.Map<IEnumerable<ConsultationDto>>(consultations),
                 totalCount,
                 paginationParams.PageNumber,
                 paginationParams.PageSize);

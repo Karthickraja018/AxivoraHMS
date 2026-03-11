@@ -1,51 +1,40 @@
-using Microsoft.EntityFrameworkCore;
-using Axivora.Data;
 using Axivora.DTOs;
 using Axivora.Helpers;
 using Axivora.Services.Interfaces;
+using Axivora.Repositories.Interfaces;
 
 namespace Axivora.Services
 {
     /// <inheritdoc />
     public class MedicineService : IMedicineService
     {
-        private readonly AxivoraDbContext _context;
+        private readonly IMedicineRepository _repository;
 
-        public MedicineService(AxivoraDbContext context)
+        public MedicineService(IMedicineRepository repository)
         {
-            _context = context;
+            _repository = repository;
         }
 
         /// <inheritdoc />
         public async Task<PaginationResponse<MedicineDto>> GetAllAsync(
             string? search, int pageNumber, int pageSize)
         {
-            var query = _context.Medicines.AsQueryable();
+            var totalCount = await _repository.CountAsync(search);
+            var items = await _repository.GetPagedAsync(search, (pageNumber - 1) * pageSize, pageSize);
 
-            if (!string.IsNullOrWhiteSpace(search))
-                query = query.Where(m => m.MedicineName.Contains(search));
+            var dtos = items.Select(m => new MedicineDto
+            {
+                MedicineId   = m.MedicineId,
+                MedicineName = m.MedicineName
+            }).ToList();
 
-            var totalCount = await query.CountAsync();
-
-            var items = await query
-                .OrderBy(m => m.MedicineName)
-                .Skip((pageNumber - 1) * pageSize)
-                .Take(pageSize)
-                .Select(m => new MedicineDto
-                {
-                    MedicineId   = m.MedicineId,
-                    MedicineName = m.MedicineName
-                })
-                .ToListAsync();
-
-            return new PaginationResponse<MedicineDto>(items, totalCount, pageNumber, pageSize);
+            return new PaginationResponse<MedicineDto>(dtos, totalCount, pageNumber, pageSize);
         }
 
         /// <inheritdoc />
         public async Task<MedicineDto?> GetByIdAsync(int id)
         {
-            var medicine = await _context.Medicines
-                .FirstOrDefaultAsync(m => m.MedicineId == id);
+            var medicine = await _repository.GetByIdAsync(id);
 
             if (medicine is null)
                 return null;

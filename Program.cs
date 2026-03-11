@@ -6,8 +6,11 @@ using Axivora.Data;
 using Axivora.Middleware;
 using Axivora.Services;
 using Axivora.Services.Interfaces;
+using Axivora.Repositories;
+using Axivora.Repositories.Interfaces;
 using Axivora.Mappings;
 using Axivora.Security;
+using Axivora.BackgroundServices;
 
 namespace Axivora
 {
@@ -64,6 +67,29 @@ namespace Axivora
             builder.Services.AddScoped<IMedicalHistoryService, MedicalHistoryService>();
             builder.Services.AddScoped<IFeedbackService, FeedbackService>();
             builder.Services.AddScoped<IAdminReportService, AdminReportService>();
+            // Date-based slot scheduling services
+            builder.Services.AddScoped<IDoctorAvailabilityTemplateService, DoctorAvailabilityTemplateService>();
+            builder.Services.AddScoped<IDoctorAvailabilityService, DoctorAvailabilityService>();
+            builder.Services.AddScoped<ISlotService, SlotService>();
+            builder.Services.AddScoped<IAppointmentBookingService, AppointmentBookingService>();
+
+            // Register Repositories
+            builder.Services.AddScoped<IAppointmentRepository, AppointmentRepository>();
+            builder.Services.AddScoped<IAuthRepository, AuthRepository>();
+            builder.Services.AddScoped<IDoctorRepository, DoctorRepository>();
+            builder.Services.AddScoped<IPatientRepository, PatientRepository>();
+            builder.Services.AddScoped<IConsultationRepository, ConsultationRepository>();
+            builder.Services.AddScoped<IDoctorScheduleRepository, DoctorScheduleRepository>();
+            builder.Services.AddScoped<IMedicalHistoryRepository, MedicalHistoryRepository>();
+            builder.Services.AddScoped<IFeedbackRepository, FeedbackRepository>();
+            builder.Services.AddScoped<ILabTestRepository, LabTestRepository>();
+            builder.Services.AddScoped<IMedicineRepository, MedicineRepository>();
+            builder.Services.AddScoped<IAdminReportRepository, AdminReportRepository>();
+            // Date-based slot scheduling repositories
+            builder.Services.AddScoped<IAvailabilityTemplateRepository, AvailabilityTemplateRepository>();
+            builder.Services.AddScoped<IAvailabilityDayRepository, AvailabilityDayRepository>();
+            builder.Services.AddScoped<IAppointmentSlotRepository, AppointmentSlotRepository>();
+            builder.Services.AddScoped<IAppointmentBookingRepository, AppointmentBookingRepository>();
 
             // Register token service
             builder.Services.AddScoped<ITokenService, TokenService>();

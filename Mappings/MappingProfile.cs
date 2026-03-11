@@ -89,6 +89,24 @@ namespace Axivora.Mappings
                     src.Rating == 2 ? "Poor" :
                     src.Rating == 3 ? "Average" :
                     src.Rating == 4 ? "Good" : "Excellent"));
+
+            // ?? Availability Template ????????????????????????????????????????
+            CreateMap<DoctorAvailabilityTemplate, AvailabilityTemplateDto>()
+                .ForMember(dest => dest.DoctorName, opt => opt.MapFrom(src => src.Doctor!.FullName))
+                .ForMember(dest => dest.DayName,    opt => opt.MapFrom(src => ((DayOfWeek)src.DayOfWeek).ToString()));
+
+            CreateMap<CreateAvailabilityTemplateDto, DoctorAvailabilityTemplate>()
+                .ForMember(dest => dest.IsActive,   opt => opt.MapFrom(_ => true))
+                .ForMember(dest => dest.CreatedAt,  opt => opt.Ignore());
+
+            // ?? Availability Day ?????????????????????????????????????????????
+            CreateMap<DoctorAvailabilityDay, AvailabilityDayDto>()
+                .ForMember(dest => dest.TotalSlots,     opt => opt.MapFrom(src => src.Slots.Count))
+                .ForMember(dest => dest.AvailableSlots, opt => opt.MapFrom(src =>
+                    src.Slots.Count(s => s.Status == SlotStatus.Available)));
+
+            // ?? Appointment Slot ?????????????????????????????????????????????
+            CreateMap<AppointmentSlot, SlotDto>();
         }
     }
 }

@@ -13,6 +13,12 @@ namespace Axivora.Models
 
         public int StatusId { get; set; }
 
+        /// <summary>
+        /// References the pre-generated slot this appointment occupies.
+        /// Null for appointments created via the legacy flow.
+        /// </summary>
+        public int? SlotId { get; set; }
+
         [Required(ErrorMessage = "Appointment start time is required")]
         [DataType(DataType.DateTime)]
         public DateTime AppointmentStart { get; set; }
@@ -32,5 +38,6 @@ namespace Axivora.Models
         public Doctor? Doctor { get; set; }
         public AppointmentStatus? Status { get; set; }
         public Consultation? Consultation { get; set; }
+        public AppointmentSlot? Slot { get; set; }
     }
 }

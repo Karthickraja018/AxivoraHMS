@@ -1250,7 +1250,7 @@ namespace Axivora.Migrations
                     b.HasOne("Axivora.Models.Doctor", "Doctor")
                         .WithMany("AvailabilityDays")
                         .HasForeignKey("DoctorId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.HasOne("Axivora.Models.DoctorAvailabilityTemplate", "SourceTemplate")
@@ -1268,7 +1268,7 @@ namespace Axivora.Migrations
                     b.HasOne("Axivora.Models.Doctor", "Doctor")
                         .WithMany("AvailabilityTemplates")
                         .HasForeignKey("DoctorId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.Navigation("Doctor");

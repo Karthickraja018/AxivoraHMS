@@ -1,6 +1,6 @@
 # Axivora HMS — REST API Documentation
 
-> **Version:** 1.3 · **Platform:** .NET 10 / C# 14 · **Auth:** JWT Bearer HS256
+> **Version:** 1.4 · **Platform:** .NET 10 / C# 14 · **Auth:** JWT Bearer HS256
 
 ---
 
@@ -11,29 +11,32 @@
 3. [Roles & Access Control](#3-roles--access-control)
 4. [Global Error Handling](#4-global-error-handling)
 5. [Pagination](#5-pagination)
-6. [Auth Endpoints](#6-auth-endpoints----apiauth)
-7. [Doctor Endpoints](#7-doctor-endpoints----apidoctors)
-8. [Patient Endpoints](#8-patient-endpoints----apipatients)
-9. [Appointment Endpoints](#9-appointment-endpoints----apiappointments)
-10. [Consultation Endpoints](#10-consultation-endpoints----apiconsultations)
-11. [Lab Test Endpoints](#11-lab-test-endpoints----apilab-tests)
-12. [Doctor Schedule Endpoints](#12-doctor-schedule-endpoints)
-13. [Medical History Endpoints](#13-medical-history-endpoints)
-14. [Feedback Endpoints](#14-feedback-endpoints----apifeedback)
-15. [Admin Report Endpoints](#15-admin-report-endpoints----apiadminreports)
-16. [Medicine Catalogue Endpoints](#16-medicine-catalogue-endpoints----apimedicines)
-17. [Appointment Status State Machine](#17-appointment-status-state-machine)
-18. [Data Schemas](#18-data-schemas)
-19. [Quick Reference](#19-quick-reference)
+6. [Slot-Based Booking Architecture](#6-slot-based-booking-architecture)
+7. [Auth Endpoints](#7-auth-endpoints----apiauth)
+8. [Doctor Endpoints](#8-doctor-endpoints----apidoctors)
+9. [Patient Endpoints](#9-patient-endpoints----apipatients)
+10. [Appointment Endpoints](#10-appointment-endpoints----apiappointments)
+11. [Doctor Availability & Slot Endpoints](#11-doctor-availability--slot-endpoints)
+12. [Consultation Endpoints](#12-consultation-endpoints----apiconsultations)
+13. [Lab Test Endpoints](#13-lab-test-endpoints----apilab-tests)
+14. [Medical History Endpoints](#14-medical-history-endpoints)
+15. [Feedback Endpoints](#15-feedback-endpoints----apifeedback)
+16. [Admin Report Endpoints](#16-admin-report-endpoints----apiadminreports)
+17. [Medicine Catalogue Endpoints](#17-medicine-catalogue-endpoints----apimedicines)
+18. [Appointment Status State Machine](#18-appointment-status-state-machine)
+19. [Data Schemas](#19-data-schemas)
+20. [Quick Reference](#20-quick-reference)
 
 ---
 
 ## 1. Overview
 
-Axivora HMS is a Hospital Management System REST API built with ASP.NET Core (.NET 10).  
-Endpoints cover: authentication, patient management, doctor management, appointment scheduling
-(with schedule-aware booking validation and rescheduling), clinical consultations (prescriptions + lab-test orders),
-lab test result management, doctor availability scheduling, patient feedback, admin reporting, and full patient medical history.
+Axivora HMS is a Hospital Management System REST API built with ASP.NET Core (.NET 10).
+
+The appointment booking system was fully redesigned around **pre-generated availability slots**:
+doctors define weekly recurring templates ? a nightly background service materialises
+`DoctorAvailabilityDay` records ? slots are generated lazily on first access ? patients
+book by referencing a `SlotId`.
 
 **Base URL**
 ```
@@ -46,15 +49,16 @@ https://<host>/api
 |---|---|
 | Runtime | .NET 10 / C# 14 |
 | Database | SQL Server — Entity Framework Core 10 |
-| Authentication | JWT Bearer — HS256 |
-| Object Mapping | AutoMapper 13 |
-| API Docs (dev) | Swagger / OpenAPI |
+| Auth | JWT Bearer HS256 |
+| Object mapping | AutoMapper 13 |
+| Concurrency | Optimistic via `[Timestamp]` `RowVersion` on `AppointmentSlot` and `Appointment` |
+| Idempotency | `Idempotency-Key` request header, stored in `IdempotencyRecords` table |
+| Background jobs | `AvailabilityGenerationBackgroundService` — daily at midnight UTC |
+| API docs (dev) | Swagger / OpenAPI |
 
 ---
 
 ## 2. Authentication & Token Lifecycle
-
-Include the JWT in every protected request:
 
 ```
 Authorization: Bearer <token>
@@ -66,31 +70,31 @@ Authorization: Bearer <token>
 |---|---|
 | Issuer | `AxivoraHMS` |
 | Audience | `AxivoraHMS-Users` |
-| Access Token Expiry | 60 minutes (`JwtSettings:ExpiryMinutes`) |
+| Access Token Expiry | 60 min (`JwtSettings:ExpiryMinutes`) |
 | Refresh Token Expiry | 7 days (`JwtSettings:RefreshTokenExpiryDays`) |
-| Algorithm | HS256 (HMAC-SHA256) |
-| Refresh Token Storage | Database — `RefreshTokens` table (max 512 chars) |
-| Rotation Strategy | Old token revoked on every refresh call |
+| Algorithm | HS256 |
+| Refresh Token Storage | `RefreshTokens` table (max 512 chars) |
+| Rotation | Old token revoked on every refresh call |
 
 ### Token Lifecycle
 
-1. `POST /api/auth/login` (or `/register`) — returns `token` **and** `refreshToken`.
-2. When the access token expires ? `POST /api/auth/refresh-token` with the `refreshToken`.
-3. Server revokes the old refresh token and returns a fresh pair.
-4. To log out a specific device ? `POST /api/auth/revoke-token` with the `refreshToken`.
-5. A revoked or expired refresh token returns **401 Unauthorized**.
+1. `POST /api/auth/login` (or `/register`) — returns `token` and `refreshToken`.
+2. Access token expires ? `POST /api/auth/refresh-token` with `refreshToken`.
+3. Server revokes old token and returns a fresh pair.
+4. Per-device logout ? `POST /api/auth/revoke-token`.
+5. Revoked/expired refresh token ? **401 Unauthorized**.
 
 ### RefreshToken Model
 
 | Field | Type | Description |
 |---|---|---|
 | `id` | `int` | Primary key |
-| `userId` | `int` | Owning user ID |
-| `token` | `string` | Cryptographically random 64-byte Base64 value |
+| `userId` | `int` | Owning user |
+| `token` | `string` | 64-byte cryptographically random Base64 |
 | `expiresAt` | `DateTime` | UTC expiry |
-| `createdAt` | `DateTime` | UTC creation timestamp |
-| `isRevoked` | `bool` | `true` once revoked by rotation or explicit call |
-| `revokedAt` | `DateTime?` | UTC revocation timestamp (`null` if still active) |
+| `createdAt` | `DateTime` | UTC creation |
+| `isRevoked` | `bool` | `true` after rotation or explicit revoke |
+| `revokedAt` | `DateTime?` | UTC revocation time |
 
 ---
 
@@ -101,76 +105,131 @@ Authorization: Bearer <token>
 | `Patient` | Self-registered end users | `POST /api/auth/register` |
 | `Doctor` | Medical staff | `POST /api/doctors` (Admin only) |
 | `LabTechnician` | Lab staff | Admin / manual DB insert |
-| `Admin` | Full system access | Database seed / manual insert |
+| `Admin` | Full system access | DB seed / manual insert |
+
+### Resource-Based Ownership (`OwnershipAuthorizationHandler`)
+
+For `AppointmentDto` resources the `ResourceOwner` policy applies:
+
+| Caller role | Access granted when |
+|---|---|
+| `Admin` | Always |
+| `Doctor` | `appointment.DoctorId` matches caller's `DoctorId` (resolved from JWT `UserId`) |
+| `Patient` | `appointment.PatientId` matches caller's `PatientId` (resolved from JWT `UserId`) |
 
 ---
 
 ## 4. Global Error Handling
 
-All unhandled exceptions are caught by `GlobalExceptionHandlerMiddleware`:
+`GlobalExceptionHandlerMiddleware` catches all unhandled exceptions:
 
 ```json
 { "statusCode": 404, "message": "...", "details": "..." }
 ```
 
-| Exception | HTTP Status |
-|---|---|
-| `KeyNotFoundException` | 404 Not Found |
-| `ArgumentException` | 400 Bad Request |
-| `InvalidOperationException` | 400 Bad Request |
-| `UnauthorizedAccessException` | 401 Unauthorized |
-| Any other | 500 Internal Server Error |
+| Exception | HTTP Status | Notes |
+|---|---|---|
+| `KeyNotFoundException` | 404 Not Found | |
+| `ArgumentException` | 400 Bad Request | |
+| `InvalidOperationException` | 400 Bad Request | Also used for 409 cases surfaced directly by controllers |
+| `UnauthorizedAccessException` | **403 Forbidden** | Ownership / permissions violation (authenticated but not authorised for the resource) |
+| Any other | 500 Internal Server Error | |
+
+> **401 Unauthorized** is produced exclusively by the JWT middleware for missing or invalid tokens.
 
 ---
 
 ## 5. Pagination
 
-Paginated endpoints accept `pageNumber` (default `1`) and `pageSize` (default `10`, max `100`).
+```
+GET /api/appointments?pageNumber=2&pageSize=20
+```
 
 **Response envelope:**
 ```json
 {
   "items": [...],
   "totalCount": 50,
-  "pageNumber": 1,
-  "pageSize": 10,
-  "totalPages": 5,
-  "hasPrevious": false,
+  "pageNumber": 2,
+  "pageSize": 20,
+  "totalPages": 3,
+  "hasPrevious": true,
   "hasNext": true
 }
 ```
 
 ---
 
-## 6. Auth Endpoints — `/api/auth`
+## 6. Slot-Based Booking Architecture
+
+The appointment booking flow replaced direct `AppointmentStart`/`AppointmentEnd` booking with a **pre-generated slot model**:
+
+```
+DoctorAvailabilityTemplate
+        ? (nightly background service)
+        ?
+DoctorAvailabilityDay          ? one row per doctor-date
+        ? (lazy, on first slot request)
+        ?
+AppointmentSlot                ? one row per bookable window
+        ? (patient books by SlotId)
+        ?
+Appointment  (SlotId FK)
+```
+
+### Generation Pipeline
+
+| Step | Actor | Detail |
+|---|---|---|
+| 1. Template created | Admin / Doctor | Defines a recurring weekly window with `DayOfWeek`, `StartTime`, `EndTime`, `SlotDurationMinutes`, `EffectiveFromDate` |
+| 2. Day records generated | `AvailabilityGenerationBackgroundService` | Runs daily at midnight UTC; looks 30 days ahead; idempotent — skips existing days |
+| 3. Slot records generated | `SlotService.EnsureSlotsGeneratedAsync` | Called lazily the **first time** a date's slots are requested; never regenerates existing slots |
+| 4. Patient books | `POST /api/appointments` | Supplies `slotId` + optional `reason`; slot transitions `Available ? Booked` atomically inside a DB transaction |
+
+### Concurrency & Idempotency
+
+| Concern | Mechanism |
+|---|---|
+| **Race condition** | Slot availability is re-validated **inside** the DB transaction — no window between check and update |
+| **Optimistic concurrency** | `[Timestamp] RowVersion` on `AppointmentSlot` and `Appointment`; concurrent writers ? `DbUpdateConcurrencyException` ? 409 Conflict |
+| **Duplicate booking (retry)** | Supply `Idempotency-Key: <uuid>` header on `POST /api/appointments`; stored response is returned unchanged on retry |
+
+### Slot Status Values
+
+| Status | Meaning |
+|---|---|
+| `Available` | Ready to book |
+| `Booked` | Linked to an appointment |
+| `Blocked` | Manually blocked or covered by Leave/Holiday |
+| `Cancelled` | Previously booked, now released via admin |
+
+### Availability Day Status Values
+
+| Status | Slot effect |
+|---|---|
+| `Open` | Slots remain as generated |
+| `Closed` | All `Available` slots ? `Blocked` |
+| `Leave` | All `Available` slots ? `Blocked` |
+| `Holiday` | All `Available` slots ? `Blocked` |
+| `NoSchedule` | No `DoctorAvailabilityDay` record exists for this date |
 
 ---
+
+## 7. Auth Endpoints — `/api/auth`
 
 ### `POST /api/auth/register`
 **Auth:** Public
 
-Register a new Patient user. Only the `Patient` role is accepted for self-registration.
-
 | Field | Type | Required | Description |
 |---|---|---|---|
 | `email` | `string` | Yes | Valid email (max 150 chars) |
-| `password` | `string` | Yes | Min 8 chars — uppercase + lowercase + digit + special char |
+| `password` | `string` | Yes | ?8 chars — uppercase + lowercase + digit + special char |
 | `confirmPassword` | `string` | Yes | Must match `password` |
 | `role` | `string` | No | Always `"Patient"` — any other value is rejected |
 
-**Example**
-```json
-{
-  "email": "user@example.com",
-  "password": "P@ssword1",
-  "confirmPassword": "P@ssword1",
-  "role": "Patient"
-}
-```
-
 | Status | Description |
 |---|---|
-| 201 Created | Returns `AuthResponseDto` (includes `token` + `refreshToken`) |
+| 201 Created | Returns `AuthResponseDto` |
 | 400 Bad Request | Validation error, email already registered, or non-Patient role |
 
 ---
@@ -178,41 +237,35 @@ Register a new Patient user. Only the `Patient` role is accepted for self-regist
 ### `POST /api/auth/login`
 **Auth:** Public
 
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `email` | `string` | Yes | Registered email |
-| `password` | `string` | Yes | Account password |
-
-**Example**
-```json
-{ "email": "user@example.com", "password": "P@ssword1" }
-```
+| Field | Type | Required |
+|---|---|---|
+| `email` | `string` | Yes |
+| `password` | `string` | Yes |
 
 | Status | Description |
 |---|---|
-| 200 OK | Returns `AuthResponseDto` (includes `token` + `refreshToken` + `tokenExpiresAt`) |
-| 400 Bad Request | Validation error |
-| 401 Unauthorized | Invalid email or password, or account disabled |
+| 200 OK | Returns `AuthResponseDto` |
+| 401 Unauthorized | Invalid credentials or account disabled |
 
 ---
 
 ### `POST /api/auth/verify-email`
-**Auth:** Public · Query params: `email`, `code`
+**Auth:** Public · Query: `email`, `code`
 
 | Status | Description |
 |---|---|
-| 200 OK | `{ "message": "Email verified successfully" }` |
-| 400 Bad Request | Invalid verification code |
+| 200 OK | Email verified |
+| 400 Bad Request | Invalid code |
 | 404 Not Found | User not found |
 
 ---
 
 ### `POST /api/auth/forgot-password`
-**Auth:** Public · Body: `{ "email": "user@example.com" }`
+**Auth:** Public · Body: `{ "email": "..." }`
 
 | Status | Description |
 |---|---|
-| 200 OK | Reset link sent to email |
+| 200 OK | Reset link sent |
 | 404 Not Found | Email not registered |
 
 ---
@@ -220,45 +273,36 @@ Register a new Patient user. Only the `Patient` role is accepted for self-regist
 ### `POST /api/auth/reset-password`
 **Auth:** Public
 
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `email` | `string` | Yes | Registered email |
-| `resetToken` | `string` | Yes | Token received via email |
-| `newPassword` | `string` | Yes | Same complexity rules as registration |
-| `confirmPassword` | `string` | Yes | Must match `newPassword` |
+| Field | Type | Required |
+|---|---|---|
+| `email` | `string` | Yes |
+| `resetToken` | `string` | Yes |
+| `newPassword` | `string` | Yes |
+| `confirmPassword` | `string` | Yes |
 
 | Status | Description |
 |---|---|
-| 200 OK | Password reset successfully |
-| 400 Bad Request | Invalid / expired token or validation error |
+| 200 OK | Password reset |
+| 400 Bad Request | Invalid token or validation error |
 | 404 Not Found | User not found |
 
 ---
 
 ### `POST /api/auth/refresh-token`
-**Auth:** Public
+**Auth:** Public · Body: `{ "refreshToken": "..." }`
 
-Issues a new JWT access token and refresh token using a valid, non-revoked refresh token.
-Implements **token rotation** — the supplied token is immediately revoked.
-
-**Request Body:** `{ "refreshToken": "<base64-token>" }`
+Implements token rotation — supplied token is immediately revoked.
 
 | Status | Description |
 |---|---|
-| 200 OK | Returns full `AuthResponseDto` with new `token`, `refreshToken`, `tokenExpiresAt` |
-| 400 Bad Request | `refreshToken` field missing |
-| 401 Unauthorized | Token not found, already revoked, or expired |
-
-> **Note:** Always replace the stored refresh token with the one returned — the old token is invalidated immediately.
+| 200 OK | Returns full `AuthResponseDto` |
+| 400 Bad Request | Field missing |
+| 401 Unauthorized | Token not found, revoked, or expired |
 
 ---
 
 ### `POST /api/auth/revoke-token`
-**Auth:** Public
-
-Revokes a refresh token, logging out that session. The JWT remains valid until it expires naturally.
-
-**Request Body:** `{ "refreshToken": "<base64-token>" }`
+**Auth:** Public · Body: `{ "refreshToken": "..." }`
 
 | Status | Description |
 |---|---|
@@ -267,649 +311,247 @@ Revokes a refresh token, logging out that session. The JWT remains valid until i
 
 ---
 
-## 7. Doctor Endpoints — `/api/doctors`
-
----
+## 8. Doctor Endpoints — `/api/doctors`
 
 ### `GET /api/doctors`
-**Auth:** Public · Query: `pageNumber`, `pageSize`
-
-Returns `PaginationResponse<DoctorDto>`.
-
----
+**Auth:** Public · Query: `pageNumber`, `pageSize` ? `PaginationResponse<DoctorDto>`
 
 ### `GET /api/doctors/{id}`
-**Auth:** Public
-
-| Status | Description |
-|---|---|
-| 200 OK | Returns `DoctorDto` |
-| 404 Not Found | Doctor not found |
-
----
+**Auth:** Public ? `DoctorDto` · 404 if not found
 
 ### `GET /api/doctors/department/{departmentId}`
-**Auth:** Public
-
-Returns `IEnumerable<DoctorDto>` for all doctors in the department.
-
----
+**Auth:** Public ? `IEnumerable<DoctorDto>`
 
 ### `POST /api/doctors`
 **Auth:** Required — Admin only
 
-Creates a doctor with a linked user account in one transaction.
-
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `email` | `string` | Yes | Unique email (max 150 chars) |
-| `password` | `string` | Yes | Min 8 chars |
-| `licenseNumber` | `string` | Yes | Unique medical license (max 100 chars) |
-| `fullName` | `string` | Yes | Doctor's full name (max 150 chars) |
-| `qualification` | `string` | No | e.g. MBBS, MD (max 150 chars) |
-| `experienceYears` | `int` | No | Range 0–100 |
-| `address` | `CreateAddressDto` | No | See [AddressDto](#addressdto--createaddressdto) |
-| `departmentIds` | `int[]` | Yes | At least one valid department ID |
+| `email` | `string` | Yes | Unique email |
+| `password` | `string` | Yes | |
+| `licenseNumber` | `string` | Yes | Unique (max 100) |
+| `fullName` | `string` | Yes | Max 150 |
+| `qualification` | `string` | No | |
+| `experienceYears` | `int` | No | 0–100 |
+| `address` | `CreateAddressDto` | No | |
+| `departmentIds` | `int[]` | Yes | ?1 valid ID |
 
-| Status | Description |
-|---|---|
-| 201 Created | Returns `DoctorDto` |
-| 400 Bad Request | Email/license already exists, or invalid department |
-| 401 Unauthorized | Token missing |
-| 403 Forbidden | Not Admin |
-
----
+201 Created · 400 · 401 · 403
 
 ### `PUT /api/doctors/{id}`
-**Auth:** Required — Admin only
-
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `fullName` | `string` | No | Updated full name |
-| `qualification` | `string` | No | Updated qualification |
-| `experienceYears` | `int` | No | Range 0–100 |
-| `addressId` | `int` | No | Reference to existing address |
-| `isActive` | `bool` | No | Active / inactive flag |
-
-| Status | Description |
-|---|---|
-| 200 OK | Returns updated `DoctorDto` |
-| 404 Not Found | Doctor not found |
-| 401 Unauthorized | Token missing |
-| 403 Forbidden | Not Admin |
-
----
+**Auth:** Required — Admin only ? `DoctorDto` · 404 · 401 · 403
 
 ### `DELETE /api/doctors/{id}`
-**Auth:** Required — Admin only
-
-Soft-delete (`IsDeleted = true`, `IsActive = false`).
-
-| Status | Description |
-|---|---|
-| 204 No Content | Deleted successfully |
-| 404 Not Found | Doctor not found |
-| 401 Unauthorized | Token missing |
-| 403 Forbidden | Not Admin |
+**Auth:** Required — Admin only · Soft-delete · 204 · 404 · 401 · 403
 
 ---
 
-## 8. Patient Endpoints — `/api/patients`
-
----
+## 9. Patient Endpoints — `/api/patients`
 
 ### `GET /api/patients`
-**Auth:** Required — Admin only · Query: `pageNumber`, `pageSize`
-
-Returns `PaginationResponse<PatientDto>`.
-
----
+**Auth:** Admin only · Query: `pageNumber`, `pageSize` ? `PaginationResponse<PatientDto>`
 
 ### `GET /api/patients/{id}`
-**Auth:** Required — Admin / Doctor / record owner
-
-> **Ownership rule:** Non-Admin/Doctor callers may only access their own record (verified via `UserId` JWT claim).
-
-| Status | Description |
-|---|---|
-| 200 OK | Returns `PatientDto` |
-| 403 Forbidden | Caller is not owner, Admin, or Doctor |
-| 404 Not Found | Patient not found |
-
----
+**Auth:** Admin / Doctor / record owner (ownership via `UserId` claim) ? `PatientDto`
 
 ### `GET /api/patients/mrn/{mrn}`
-**Auth:** Required — Admin / Doctor
-
-| Status | Description |
-|---|---|
-| 200 OK | Returns `PatientDto` |
-| 404 Not Found | MRN not found |
-
----
+**Auth:** Admin / Doctor ? `PatientDto`
 
 ### `GET /api/patients/search`
-**Auth:** Required — Admin / Doctor · Query: `searchTerm`
-
-Returns `IEnumerable<PatientDto>` (empty list for blank/null term).
-
----
+**Auth:** Admin / Doctor · Query: `searchTerm` ? `IEnumerable<PatientDto>`
 
 ### `GET /api/patients/me`
-**Auth:** Required — Patient only
-
-Returns the authenticated patient's own profile.
-
-| Status | Description |
-|---|---|
-| 200 OK | Returns `PatientDto` |
-| 404 Not Found | Profile not yet created |
-
----
+**Auth:** Patient only ? own `PatientDto`
 
 ### `POST /api/patients/me`
-**Auth:** Required — Patient only
-
-Creates (or restores a soft-deleted) patient profile for the authenticated user.
-
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `fullName` | `string` | Yes | Max 150 chars |
-| `dateOfBirth` | `DateOnly` | Yes | ISO-8601 e.g. `1990-05-15` |
-| `gender` | `string` | Yes | e.g. Male / Female / Other (max 20 chars) |
-| `phoneNumber` | `string` | Yes | Max 20 chars |
-| `bloodGroup` | `string` | No | e.g. O+ (max 10 chars) |
-| `emergencyContact` | `string` | No | Max 20 chars |
-| `address` | `CreateAddressDto` | Yes | See [AddressDto](#addressdto--createaddressdto) |
-
-| Status | Description |
-|---|---|
-| 201 Created | Returns `PatientDto` |
-| 400 Bad Request | Validation error |
-| 401 Unauthorized | Token missing or UserId not found in claims |
-
----
-
-### `POST /api/patients`
-**Auth:** Required — Admin only
-
-Creates a patient together with a new user account in one transaction.
+**Auth:** Patient only — creates or restores soft-deleted profile
 
 | Field | Type | Required |
 |---|---|---|
-| `email` | `string` | Yes |
-| `password` | `string` | Yes |
 | `fullName` | `string` | Yes |
 | `dateOfBirth` | `DateOnly` | Yes |
 | `gender` | `string` | Yes |
-| `phoneNumber` | `string` | No |
+| `phoneNumber` | `string` | Yes |
 | `bloodGroup` | `string` | No |
 | `emergencyContact` | `string` | No |
 | `address` | `CreateAddressDto` | Yes |
 
-| Status | Description |
-|---|---|
-| 201 Created | Returns `PatientDto` |
-| 400 Bad Request | Email already exists or validation error |
-| 401 Unauthorized | Token missing |
-| 403 Forbidden | Not Admin |
+201 Created
 
----
+### `POST /api/patients`
+**Auth:** Admin only — creates patient with user account · 201
 
 ### `PUT /api/patients/{id}`
-**Auth:** Required — Admin or record owner
+**Auth:** Admin or record owner · 200 / 403 / 404
 
-| Field | Type | Description |
-|---|---|---|
-| `fullName` | `string` | Max 150 chars |
-| `phoneNumber` | `string` | Max 20 chars |
-| `bloodGroup` | `string` | Max 10 chars |
-| `emergencyContact` | `string` | Max 20 chars |
-| `addressId` | `int` | Reference to existing address |
+### `DELETE /api/patients/{id}`
+**Auth:** Admin only · soft-delete · 204
+
+---
+
+## 10. Appointment Endpoints — `/api/appointments`
+
+> The appointment controller was **completely rewritten**. `POST` now requires a `slotId` instead of raw `AppointmentStart`/`AppointmentEnd`. `PUT` no longer exists — use `PATCH /{id}/status` for status changes. `PATCH /{id}/reschedule` now takes a `newSlotId` instead of new timestamps.
+
+---
+
+### `POST /api/appointments`
+**Auth:** Required — Patient only
+
+Books a pre-generated slot. Creates an `Appointment` and atomically transitions the `AppointmentSlot` from `Available` to `Booked` inside a single DB transaction.
+
+**Idempotency:** Supply `Idempotency-Key: <uuid>` header to make the request safe to retry.
+- First call: executes booking, stores the response against the key.
+- Subsequent calls with the **same key**: returns the stored response — no duplicate appointment created.
+- Response is **200 OK** (not 201) on a replayed idempotent response.
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `slotId` | `int` | Yes | ID of an `Available` slot |
+| `reason` | `string` | No | Max 500 chars |
+
+**Example**
+```json
+{ "slotId": 42, "reason": "Annual check-up" }
+```
 
 | Status | Description |
 |---|---|
-| 200 OK | Returns updated `PatientDto` |
-| 403 Forbidden | Not authorized for this record |
-| 404 Not Found | Patient not found |
-
----
-
-### `DELETE /api/patients/{id}`
-**Auth:** Required — Admin only
-
-Soft-delete (`IsDeleted = true`).
-
----
-
-## 9. Appointment Endpoints — `/api/appointments`
-
-> **Booking validation:** When creating an appointment the service verifies:
-> 1. No overlapping appointment exists for the same doctor in the requested time window.
-> 2. The time window falls within an **active** `DoctorSchedule` entry for that day-of-week (uses .NET `DayOfWeek` — `0 = Sunday … 6 = Saturday`).
->
-> **Ownership** for `GET /{id}`, `PUT /{id}`, `PATCH /{id}/reschedule`, and `DELETE /{id}`:
-> - **Admin** — always allowed.
-> - **Doctor** — must be the appointment's assigned doctor (`UserId` ? `DoctorId`).
-> - **Patient** — must be the appointment's patient (`UserId` ? `PatientId`).
->
-> **Audit:** When a Doctor or Admin creates an appointment an entry is written to `AuditLogs`.
+| 201 Created | Appointment created; `Location` ? `GET /api/appointments/{id}` |
+| 200 OK | Idempotent replay — stored response returned |
+| 400 Bad Request | Validation error |
+| 404 Not Found | `slotId` not found or patient profile missing |
+| 409 Conflict | Slot is no longer `Available` (already booked or concurrent race condition) |
+| 401 Unauthorized | Token missing |
+| 403 Forbidden | Not a Patient |
 
 ---
 
 ### `GET /api/appointments`
 **Auth:** Required — Admin / Doctor · Query: `pageNumber`, `pageSize`
 
-- **Admin** — returns all appointments (paginated, ordered by `AppointmentStart` desc).
-- **Doctor** — automatically scoped to **their own appointments** (resolved from JWT `UserId`), ordered by `AppointmentStart` asc.
+- **Admin** — all appointments, ordered by `AppointmentStart` desc.
+- **Doctor** — scoped to their own appointments (resolved from JWT `UserId`), ordered `AppointmentStart` asc.
 
 Returns `PaginationResponse<AppointmentDto>`.
 
 ---
 
 ### `GET /api/appointments/{id}`
-**Auth:** Required — any authenticated user (ownership enforced)
+**Auth:** Required — any (ownership enforced via `OwnershipAuthorizationHandler`)
 
 | Status | Description |
 |---|---|
 | 200 OK | Returns `AppointmentDto` |
 | 403 Forbidden | Caller does not own the appointment |
-| 404 Not Found | Appointment not found |
+| 404 Not Found | Not found |
 
 ---
 
-### `GET /api/appointments/patient/{patientId}`
-**Auth:** Required — any authenticated user
+### `GET /api/appointments/me`
+**Auth:** Required — Patient only · Query: `pageNumber`, `pageSize`, `status` (optional)
 
-> **Patient restriction:** A Patient caller is forbidden unless `patientId` matches their own `PatientId`.
+Ordered by `AppointmentStart` desc. Pass `"all"` or omit `status` to return all statuses.
 
-Returns `IEnumerable<AppointmentDto>`.
+Returns `PaginationResponse<AppointmentDto>`.
 
 ---
 
 ### `GET /api/appointments/doctor/me`
 **Auth:** Required — Doctor only · Query: `pageNumber`, `pageSize`, `date` (optional `DateTime` UTC)
 
-Returns the authenticated doctor's own appointments, ordered by `AppointmentStart` asc.  
-Pass `date` to filter to a single calendar day.
+Ordered by `AppointmentStart` asc. Pass `date` to filter to a single calendar day.
 
 Returns `PaginationResponse<AppointmentDto>`.
-
----
-
-### `GET /api/appointments/doctor/{doctorId}`
-**Auth:** Required — Admin / Doctor
-
-Returns `IEnumerable<AppointmentDto>` for all non-deleted appointments for the given doctor.
-
----
-
-### `GET /api/appointments/date-range`
-**Auth:** Required — Admin / Doctor · Query: `startDate` (DateTime UTC), `endDate` (DateTime UTC)
-
-Returns `IEnumerable<AppointmentDto>` where `AppointmentStart` is within the range (inclusive).
-
----
-
-### `GET /api/appointments/me`
-**Auth:** Required — Patient only · Query: `pageNumber`, `pageSize`, `status` (optional string)
-
-Returns the authenticated patient's own appointments, ordered by `AppointmentStart` desc.  
-Pass `status` to filter by status name (e.g. `"Scheduled"`). Pass `"all"` or omit to return every status.
-
-Returns `PaginationResponse<AppointmentDto>`.
-
----
-
-### `POST /api/appointments`
-**Auth:** Required — any authenticated user
-
-> **Patient shortcut:** When the caller is a Patient, `patientId` in the body is **ignored** — the service resolves the patient from the JWT `UserId` claim automatically.
-
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `patientId` | `int` | Yes* | *Ignored for Patient callers |
-| `doctorId` | `int` | Yes | Existing doctor ID |
-| `appointmentStart` | `DateTime` | Yes | UTC start time |
-| `appointmentEnd` | `DateTime` | Yes | UTC end time |
-| `reason` | `string` | No | Max 500 chars |
-| `statusId` | `int` | Yes | e.g. `1` = Scheduled |
-
-**Example**
-```json
-{
-  "patientId": 1,
-  "doctorId": 2,
-  "appointmentStart": "2025-07-10T09:00:00",
-  "appointmentEnd":   "2025-07-10T09:30:00",
-  "reason": "Annual check-up",
-  "statusId": 1
-}
-```
-
-| Status | Description |
-|---|---|
-| 201 Created | Returns `AppointmentDto`; `Location` ? `GET /api/appointments/{id}` |
-| 400 Bad Request | Time slot conflict, outside doctor's schedule, or validation error |
-| 404 Not Found | Doctor, Patient, or StatusId not found |
-| 401 Unauthorized | Token missing |
 
 ---
 
 ### `PATCH /api/appointments/{id}/reschedule`
 **Auth:** Required — any authenticated user (ownership enforced)
 
-Moves an existing appointment to a new time window without changing any other fields.
+Moves an appointment to a **different available slot**. Both the old slot release and the new slot booking are wrapped in a single DB transaction.
 
-> **Allowed statuses:** Only appointments whose current status is **not** `Completed` or `Cancelled` can be rescheduled.  
-> **Slot conflict check:** The new window must not overlap any other non-deleted appointment for the same doctor.  
-> **Patient restriction:** A Patient caller may only reschedule their own appointment.
+> **Business rules:**
+> - Appointment must not be `Completed` or `Cancelled`.
+> - `newSlotId` must be `Available`; otherwise 409.
+> - Patient callers restricted to own appointment.
+> - Old slot ? `Available`; new slot ? `Booked`; `appointment.SlotId`, `AppointmentStart`, and `AppointmentEnd` all updated atomically.
+> - `DbUpdateConcurrencyException` on the new slot ? 409.
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `appointmentStart` | `DateTime` | Yes | New UTC start time |
-| `appointmentEnd` | `DateTime` | Yes | New UTC end time (must be after start — validated by `IValidatableObject`) |
+| `newSlotId` | `int` | Yes | ID of a different `Available` slot |
 
 **Example**
 ```json
-{
-  "appointmentStart": "2025-07-12T10:00:00",
-  "appointmentEnd":   "2025-07-12T10:30:00"
-}
+{ "newSlotId": 87 }
 ```
 
 | Status | Description |
 |---|---|
 | 200 OK | Returns updated `AppointmentDto` |
-| 400 Bad Request | `appointmentEnd` ? `appointmentStart` |
-| 401 Unauthorized | Token missing |
-| 403 Forbidden | Caller does not own the appointment |
-| 404 Not Found | Appointment not found or soft-deleted |
-| 409 Conflict | Doctor already has an overlapping appointment in the requested window |
+| 400 Bad Request | Validation error |
+| 403 Forbidden | Caller does not own this appointment |
+| 404 Not Found | Appointment or `newSlotId` not found |
+| 409 Conflict | New slot is not `Available` (concurrent race condition) |
 
 ---
 
-### `PUT /api/appointments/{id}/status`
+### `PATCH /api/appointments/{id}/status`
 **Auth:** Required — Admin / Doctor only
 
-Transitions the appointment to a new named status. Validated against the [status state machine](#17-appointment-status-state-machine).
+Transitions the appointment to a new named status. Validated against the [state machine](#18-appointment-status-state-machine).
 
 **Request Body:** `{ "status": "Confirmed" }`
 
 | Status | Description |
 |---|---|
 | 200 OK | Returns updated `AppointmentDto` |
-| 400 Bad Request | Transition not permitted for this role or from this state |
-| 404 Not Found | Appointment or target status not found |
-
----
-
-### `PUT /api/appointments/{id}`
-**Auth:** Required — any authenticated user (ownership enforced)
-
-Updates appointment fields. If `statusId` is included the transition is validated against the state machine.
-
-| Field | Type | Description |
-|---|---|---|
-| `appointmentStart` | `DateTime?` | New UTC start time |
-| `appointmentEnd` | `DateTime?` | New UTC end time |
-| `reason` | `string` | Updated reason |
-| `statusId` | `int?` | New status ID — validated via state machine |
-
-| Status | Description |
-|---|---|
-| 200 OK | Returns updated `AppointmentDto` |
-| 400 Bad Request | Status transition not allowed |
-| 403 Forbidden | Caller does not own the appointment |
-| 404 Not Found | Appointment not found |
+| 400 Bad Request | Transition not permitted for role or current state |
+| 404 Not Found | Appointment or status not found |
 
 ---
 
 ### `DELETE /api/appointments/{id}`
 **Auth:** Required — any authenticated user (ownership enforced)
 
-Soft-deletes (`IsDeleted = true`) the appointment.
+Soft-deletes the appointment and **atomically releases the linked slot** back to `Available`. Also sets appointment status to `Cancelled`.
+
+All three operations (slot release, soft-delete, status update) are wrapped in a single DB transaction.
 
 | Status | Description |
 |---|---|
-| 204 No Content | Cancelled successfully |
-| 403 Forbidden | Caller does not own the appointment |
-| 404 Not Found | Appointment not found |
+| 204 No Content | Cancelled and slot released |
+| 403 Forbidden | Caller does not own this appointment |
+| 404 Not Found | Not found |
 
 ---
 
-## 10. Consultation Endpoints — `/api/consultations`
+## 11. Doctor Availability & Slot Endpoints
 
-> **Controller-level auth:** Doctor, Admin, or Patient.  
-> Write endpoints (POST, PUT) are Doctor / Admin only.  
-> **Status rule on create:** Linked appointment must have status `Checked-In`, `In Progress`, or `Completed`.  
-> **Doctor ownership on create:** A Doctor caller can only create a consultation for their own appointment.  
-> **Duplicate guard:** Only one consultation per appointment is allowed.  
-> **`appointmentId` is immutable** after creation — PUT updates preserve the original value.  
-> **Prescription duplicate guard:** The same medicine cannot be prescribed twice in one consultation.
+Routes are all under `/api/doctors/{doctorId}` or `/api/doctors` (for non-doctor-scoped operations) and `/api/slots`.
 
 ---
 
-### `GET /api/consultations`
-**Auth:** Required — Admin only · Query: `pageNumber`, `pageSize`
+### Availability Templates
 
-Returns `PaginationResponse<ConsultationDto>` ordered by `CreatedAt` desc.
+Templates define the **recurring weekly schedule** from which `DoctorAvailabilityDay` records are generated.
 
----
-
-### `GET /api/consultations/doctor/me`
-**Auth:** Required — Doctor only · Query: `pageNumber`, `pageSize`
-
-Returns the authenticated doctor's own consultations, ordered by `CreatedAt` desc.
-
-Returns `PaginationResponse<ConsultationDto>`.
-
----
-
-### `GET /api/consultations/{id}`
-**Auth:** Required — Doctor / Admin / Patient
-
-> **Patient restriction:** A Patient caller is forbidden unless the consultation's linked appointment belongs to their own patient record.
-
-| Status | Description |
-|---|---|
-| 200 OK | Returns `ConsultationDto` |
-| 403 Forbidden | Patient caller does not own this consultation |
-| 404 Not Found | Consultation not found |
-
----
-
-### `GET /api/consultations/appointment/{appointmentId}`
-**Auth:** Required — Doctor / Admin / Patient
-
-| Status | Description |
-|---|---|
-| 200 OK | Returns `ConsultationDto` |
-| 404 Not Found | No consultation found for this appointment |
-
----
-
-### `GET /api/consultations/me`
-**Auth:** Required — Patient only · Query: `pageNumber`, `pageSize`
-
-Returns the authenticated patient's own consultations, ordered by `CreatedAt` desc.
-
-Returns `PaginationResponse<ConsultationDto>`.
-
----
-
-### `POST /api/consultations`
-**Auth:** Required — Doctor / Admin
-
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `appointmentId` | `int` | Yes | Must be `Checked-In`, `In Progress`, or `Completed` |
-| `chiefComplaint` | `string` | No | Max 1000 chars |
-| `examination` | `string` | No | Max 1000 chars |
-| `diagnosisNotes` | `string` | No | Max 500 chars |
-| `treatmentPlan` | `string` | No | Max 1000 chars |
-| `icdId` | `int` | No | ICD-10 code reference ID |
-
-**Example**
-```json
-{
-  "appointmentId": 5,
-  "chiefComplaint": "Headache and fever",
-  "examination":    "BP 120/80, Temp 38.5 C",
-  "diagnosisNotes": "Viral fever",
-  "treatmentPlan":  "Rest, fluids, paracetamol",
-  "icdId": 12
-}
-```
-
-| Status | Description |
-|---|---|
-| 201 Created | Returns `ConsultationDto`; `Location` ? `GET /api/consultations/{id}` |
-| 400 Bad Request | Appointment status invalid, or consultation already exists |
-| 403 Forbidden | Doctor caller is not the appointment's assigned doctor |
-
----
-
-### `PUT /api/consultations/{id}`
-**Auth:** Required — Doctor / Admin
-
-`appointmentId` is **read-only** — any value sent in the body is silently ignored.
-
-| Field | Type | Description |
-|---|---|---|
-| `chiefComplaint` | `string` | Updated complaint |
-| `examination` | `string` | Updated examination notes |
-| `diagnosisNotes` | `string` | Updated diagnosis |
-| `treatmentPlan` | `string` | Updated treatment plan |
-| `icdId` | `int?` | Updated ICD-10 reference |
-
-| Status | Description |
-|---|---|
-| 200 OK | Returns updated `ConsultationDto` |
-| 404 Not Found | Consultation not found |
-
----
-
-### `POST /api/consultations/{id}/prescriptions`
-**Auth:** Required — Doctor / Admin
-
-> Same `medicineId` cannot appear twice in the same consultation.
-
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `medicineId` | `int` | Yes | Existing Medicine catalog ID |
-| `dosage` | `string` | No | Max 50 chars |
-| `frequency` | `string` | No | Max 50 chars |
-| `route` | `string` | No | Max 50 chars |
-| `durationDays` | `int` | No | Number of days |
-| `instructions` | `string` | No | Max 200 chars |
-
-| Status | Description |
-|---|---|
-| 200 OK | Returns updated `ConsultationDto` including new prescription |
-| 400 Bad Request | Medicine already prescribed in this consultation |
-| 404 Not Found | Consultation not found |
-
----
-
-### `POST /api/consultations/{id}/lab-tests`
-**Auth:** Required — Doctor / Admin
-
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `labTestId` | `int` | Yes | Existing LabTest catalog ID |
-
-Ordered test is created with `Status = "Pending"`.
-
-| Status | Description |
-|---|---|
-| 200 OK | Returns updated `ConsultationDto` including new ordered test |
-| 404 Not Found | Consultation not found |
-
----
-
-## 11. Lab Test Endpoints — `/api/lab-tests`
-
----
-
-### `PUT /api/lab-tests/{orderedTestId}/result`
-**Auth:** Required — Admin / Doctor
-
-Uploads or updates the result for an ordered test and sets `ResultDate` to `UtcNow`.
-
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `result` | `string` | Yes | Result text / value (max 2000 chars) |
-
-**Example:** `{ "result": "Haemoglobin: 13.5 g/dL — Normal" }`
-
-| Status | Description |
-|---|---|
-| 200 OK | Returns `LabResultDto` with updated `result` and `resultDate` |
-| 400 Bad Request | `result` field missing |
-| 404 Not Found | OrderedTest not found |
-| 403 Forbidden | Not Admin or Doctor |
-
----
-
-### `GET /api/lab-tests/patient/{patientId}`
-**Auth:** Required — Admin / Doctor
-
-Returns all lab test results for a patient across all consultations.
-
-Returns `IEnumerable<LabResultDto>`.
-
----
-
-### `GET /api/lab-tests/consultation/{consultationId}`
-**Auth:** Required — Admin / Doctor
-
-Returns all lab tests ordered during a specific consultation.
-
-Returns `IEnumerable<LabResultDto>`.
-
----
-
-### `GET /api/lab-tests/catalogue`
-**Auth:** Required — Admin / Doctor / Patient · Query: `search` (optional), `pageNumber` (default `1`), `pageSize` (default `20`, max `100`)
-
-Queries the `LabTests` **catalogue** table (not ordered test results). Search is a case-insensitive partial match on `TestName`. Results are sorted alphabetically.
-
-Returns `PaginationResponse<LabTestCatalogueDto>`.
-
----
-
-### `GET /api/lab-tests/catalogue/{id}`
-**Auth:** Required — Admin / Doctor / Patient
-
-Returns a single lab test catalogue entry by `LabTestId`.
-
-| Status | Description |
-|---|---|
-| 200 OK | Returns `LabTestCatalogueDto` |
-| 404 Not Found | No lab test with the given ID |
-
----
-
-## 12. Doctor Schedule Endpoints
-
-Routes are nested under `/api/doctors`.
-
-> **Overlap guard (create & update):** A new or updated schedule cannot overlap an existing **active** schedule for the same doctor on the same day-of-week.  
-> **Time validation:** `EndTime` must be after `StartTime`.  
-> **Doctor ownership:** A Doctor caller can only update/delete their **own** schedule slots (matched by JWT `UserId` ? `DoctorId`). Admin bypasses this check.
-
----
-
-### `POST /api/doctors/{doctorId}/schedule`
+#### `POST /api/doctors/{doctorId}/availability-template`
 **Auth:** Required — Admin / Doctor
 
 | Field | Type | Required | Description |
 |---|---|---|---|
 | `dayOfWeek` | `int` | Yes | `0 = Sunday … 6 = Saturday` |
 | `startTime` | `TimeSpan` | Yes | e.g. `"09:00:00"` |
-| `endTime` | `TimeSpan` | Yes | e.g. `"17:00:00"` (must be > `startTime`) |
-| `slotDurationMinutes` | `int` | No | Range 5–120, default `15` |
+| `endTime` | `TimeSpan` | Yes | Must be after `startTime` |
+| `slotDurationMinutes` | `int` | No | 5–120, default `15` |
+| `effectiveFromDate` | `DateOnly` | Yes | Template active from this date |
+| `effectiveToDate` | `DateOnly?` | No | Template expires after this date; must be after `effectiveFromDate` |
+
+**Validation (via `IValidatableObject`):**
+- `endTime > startTime`
+- `effectiveToDate > effectiveFromDate` (when provided)
 
 **Example**
 ```json
@@ -917,305 +559,383 @@ Routes are nested under `/api/doctors`.
   "dayOfWeek": 1,
   "startTime": "09:00:00",
   "endTime": "17:00:00",
-  "slotDurationMinutes": 30
+  "slotDurationMinutes": 30,
+  "effectiveFromDate": "2025-07-01"
 }
 ```
 
 | Status | Description |
 |---|---|
-| 201 Created | Returns `DoctorScheduleDto` with `generatedSlots` |
-| 400 Bad Request | `endTime ? startTime` or overlap with existing schedule |
+| 201 Created | Returns `AvailabilityTemplateDto` |
+| 400 Bad Request | Validation error or `endTime ? startTime` |
 | 404 Not Found | Doctor not found |
 | 403 Forbidden | Not Admin or Doctor |
 
 ---
 
-### `GET /api/doctors/{doctorId}/schedule`
+#### `GET /api/doctors/{doctorId}/availability-template`
 **Auth:** Public
 
-Returns all schedule slots ordered by `DayOfWeek` then `StartTime`.
+Returns all templates for a doctor ordered by `DayOfWeek` then `StartTime`.
 
-Returns `IEnumerable<DoctorScheduleDto>` (each includes `generatedSlots`).
+Returns `IEnumerable<AvailabilityTemplateDto>`.
 
 | Status | Description |
 |---|---|
-| 200 OK | Returns schedule list |
+| 200 OK | Template list |
 | 404 Not Found | Doctor not found |
 
 ---
 
-### `PUT /api/doctors/schedule/{scheduleId}`
-**Auth:** Required — Admin / Doctor (own schedule only)
+#### `PATCH /api/doctors/availability-template/{templateId}`
+**Auth:** Required — Admin / Doctor
 
-All fields are optional — only provided fields are updated.
+Updates `isActive` and/or `effectiveToDate` only. Time fields are immutable after creation.
 
 | Field | Type | Description |
 |---|---|---|
-| `dayOfWeek` | `int?` | New day (0–6) |
-| `startTime` | `TimeSpan?` | New start time |
-| `endTime` | `TimeSpan?` | New end time |
-| `slotDurationMinutes` | `int?` | Range 5–120 |
-| `isActive` | `bool?` | Enable / disable this slot |
+| `isActive` | `bool?` | Deactivate (false) to stop generating new days |
+| `effectiveToDate` | `DateOnly?` | Set an expiry date; must be after `effectiveFromDate` |
 
 | Status | Description |
 |---|---|
-| 200 OK | Returns updated `DoctorScheduleDto` |
-| 400 Bad Request | `endTime ? startTime` or would create overlap |
-| 403 Forbidden | Doctor caller does not own this schedule |
-| 404 Not Found | Schedule not found |
+| 200 OK | Returns updated `AvailabilityTemplateDto` |
+| 400 Bad Request | `effectiveToDate ? effectiveFromDate` |
+| 404 Not Found | Template not found |
 
 ---
 
-### `DELETE /api/doctors/schedule/{scheduleId}`
-**Auth:** Required — Admin / Doctor (own schedule only)
-
-Hard-deletes the schedule slot.
-
-| Status | Description |
-|---|---|
-| 204 No Content | Deleted successfully |
-| 403 Forbidden | Doctor caller does not own this schedule |
-| 404 Not Found | Schedule not found |
-
----
-
-## 13. Medical History Endpoints
-
-Routes are nested under `/api/patients`.
-
----
-
-### `GET /api/patients/{patientId}/medical-history`
+#### `DELETE /api/doctors/availability-template/{templateId}`
 **Auth:** Required — Admin / Doctor
 
-Returns a full chronological medical history including all visits, consultations, prescriptions, and lab test results.
+Soft-delete: sets `isActive = false`. Existing `DoctorAvailabilityDay` records are preserved for historical integrity.
 
 | Status | Description |
 |---|---|
-| 200 OK | Returns `MedicalHistoryDto` |
-| 404 Not Found | Patient not found |
-| 403 Forbidden | Not Admin or Doctor |
+| 204 No Content | Deactivated |
+| 404 Not Found | Template not found |
 
 ---
 
-### `GET /api/patients/me/medical-history`
-**Auth:** Required — Patient only
+### Availability Days
 
-Returns the authenticated patient's own medical history. `UserId` is resolved from the JWT claim.
+`DoctorAvailabilityDay` records are materialised by the background service from active templates.
 
-| Status | Description |
+#### `GET /api/doctors/{doctorId}/availability-days`
+**Auth:** Public
+
+Returns all availability day records for a doctor.
+
+Returns `IEnumerable<AvailabilityDayDto>`.
+
+---
+
+#### `PATCH /api/doctors/availability-day/{dayId}`
+**Auth:** Required — Admin / Doctor
+
+Updates the status of a specific day. **Side effects on slots:**
+
+| New status | Slot effect |
 |---|---|
-| 200 OK | Returns `MedicalHistoryDto` |
-| 404 Not Found | Patient profile not found |
-
----
-
-## 14. Feedback Endpoints — `/api/feedback`
-
-> **One feedback per consultation** — enforced by a UNIQUE constraint on `ConsultationId`.  
-> Feedback can only be submitted for consultations whose linked appointment has status **`Completed`**.  
-> Only the submitting Patient may edit or delete their own feedback (Admin can delete any).
-
----
-
-### `POST /api/feedback`
-**Auth:** Required — Patient only
-
-Submit feedback for a completed consultation.
+| `Leave` / `Holiday` / `Closed` | All `Available` slots ? `Blocked` |
+| `Open` (from non-Open) | All `Blocked` slots ? `Available` |
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `consultationId` | `int` | Yes | The completed consultation to rate |
-| `rating` | `int` | Yes | 1 (Very Poor) to 5 (Excellent) |
-| `comment` | `string` | No | Optional free text (max 1000 chars) |
-
-**Example**
-```json
-{
-  "consultationId": 12,
-  "rating": 5,
-  "comment": "Very professional and thorough."
-}
-```
+| `status` | `string` | Yes | `Open` \| `Closed` \| `Leave` \| `Holiday` |
 
 | Status | Description |
 |---|---|
-| 201 Created | Returns `SessionFeedbackDto`; `Location` ? `GET /api/feedback/consultation/{consultationId}` |
-| 400 Bad Request | Validation error |
-| 403 Forbidden | Consultation does not belong to the caller's patient record |
-| 404 Not Found | Consultation or patient profile not found |
-| 409 Conflict | Feedback already submitted for this consultation, or appointment is not `Completed` |
+| 200 OK | Returns updated `AvailabilityDayDto` |
+| 400 Bad Request | Invalid status value |
+| 404 Not Found | Day not found |
 
 ---
 
-### `PUT /api/feedback/{feedbackId}`
-**Auth:** Required — Patient only (own feedback)
+### Calendar
 
-Edit the `rating` and/or `comment` of existing feedback. Sets `isEdited = true` and `updatedAt = UtcNow`.
+#### `GET /api/doctors/{doctorId}/calendar`
+**Auth:** Public · Query: `from` (`DateOnly`), `to` (`DateOnly`)
+
+Returns an aggregated daily summary over a date range. Days with no schedule show `dayStatus = "NoSchedule"`.
+
+Returns `IEnumerable<DoctorCalendarDayDto>`.
+
+| Status | Description |
+|---|---|
+| 200 OK | Calendar list |
+| 400 Bad Request | `to < from` |
+
+---
+
+### Patient Availability Preview
+
+#### `GET /api/doctors/{doctorId}/availability`
+**Auth:** Public · Query: `from` (`DateOnly`), `to` (`DateOnly`)
+
+Returns per-day available slot counts — designed for patient booking UIs (date picker / availability grid).
+
+Returns `IEnumerable<PatientAvailabilityPreviewDto>`.
+
+| Status | Description |
+|---|---|
+| 200 OK | Preview list (0 available slots shown for closed/leave days) |
+| 400 Bad Request | `to < from` |
+
+---
+
+### Doctor Leave
+
+#### `POST /api/doctors/{doctorId}/leave`
+**Auth:** Required — Admin / Doctor
+
+Marks all `DoctorAvailabilityDay` records in the `[from, to]` range as `Leave` and blocks all `Available` slots in those days.
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `rating` | `int?` | No | 1–5 |
-| `comment` | `string?` | No | Max 1000 chars |
+| `from` | `DateOnly` | Yes | Inclusive start of leave |
+| `to` | `DateOnly` | Yes | Inclusive end (must be ? `from`) |
+| `reason` | `string?` | No | Max 500 chars (logged only) |
 
 | Status | Description |
 |---|---|
-| 200 OK | Returns updated `SessionFeedbackDto` |
-| 400 Bad Request | Validation error |
-| 403 Forbidden | Caller did not submit this feedback |
-| 404 Not Found | Feedback not found |
+| 204 No Content | Leave applied |
+| 400 Bad Request | `to < from` or validation error |
+| 404 Not Found | No availability days found for this doctor in the given range |
 
 ---
 
-### `GET /api/feedback/consultation/{consultationId}`
-**Auth:** Required — Patient / Doctor / Admin
+### Slots
 
-| Caller | Access |
-|---|---|
-| **Admin** | Unrestricted |
-| **Doctor** | Only if the consultation belongs to their own appointment |
-| **Patient** | Only if they submitted the feedback |
+#### `GET /api/doctors/{doctorId}/slots`
+**Auth:** Public · Query: `date` (`DateOnly`, required)
+
+Returns all `Available` slots for a doctor on the given date. If the `DoctorAvailabilityDay` exists but slots have not been generated yet, generation is triggered **on demand** (lazy generation — idempotent).
+
+Returns `IEnumerable<SlotDto>`.
 
 | Status | Description |
 |---|---|
-| 200 OK | Returns `SessionFeedbackDto` |
-| 403 Forbidden | Ownership check failed |
-| 404 Not Found | No feedback for this consultation |
+| 200 OK | Available slot list (empty array if no open slots) |
+| 400 Bad Request | `date` missing |
 
 ---
 
-### `GET /api/feedback/doctor/{doctorId}`
-**Auth:** Required — Admin / Doctor (own only)
+#### `GET /api/slots/{slotId}`
+**Auth:** Public
 
-Returns all feedback for a doctor's consultations, ordered by `CreatedAt` desc.
+Returns full detail for a single slot.
 
-> A Doctor caller is restricted to their own `DoctorId` (matched via JWT `UserId`).
-
-Returns `IEnumerable<SessionFeedbackDto>`.
+Returns `SlotDetailDto`.
 
 | Status | Description |
 |---|---|
-| 200 OK | Returns feedback list |
-| 403 Forbidden | Doctor caller does not own this doctor ID |
+| 200 OK | Returns `SlotDetailDto` |
+| 404 Not Found | Slot not found |
 
 ---
 
-### `GET /api/feedback/patient/{patientId}`
-**Auth:** Required — Admin / Patient (own only)
-
-Returns all feedback submitted by a patient, ordered by `CreatedAt` desc.
-
-> A Patient caller is restricted to their own `PatientId` (matched via JWT `UserId`).
-
-Returns `IEnumerable<SessionFeedbackDto>`.
-
-| Status | Description |
-|---|---|
-| 200 OK | Returns feedback list |
-| 403 Forbidden | Patient caller does not own this patient ID |
-
----
-
-### `DELETE /api/feedback/{feedbackId}`
-**Auth:** Required — Patient (own) / Admin
-
-Hard-deletes the feedback record.
-
-| Status | Description |
-|---|---|
-| 204 No Content | Deleted successfully |
-| 403 Forbidden | Patient caller did not submit this feedback |
-| 404 Not Found | Feedback not found |
-
----
-
-## 15. Admin Report Endpoints — `/api/admin/reports`
-
-> **All endpoints require the `Admin` role.**  
-> Reports are backed by pre-built SQL Server views (`vw_AppointmentReport`, `vw_DoctorWorkloadReport`).
-
----
-
-### `GET /api/admin/reports/appointments`
+#### `PATCH /api/slots/{slotId}`
 **Auth:** Required — Admin only
 
-Returns a paginated appointment report sourced from `vw_AppointmentReport`.  
-Results are ordered by `AppointmentStart` desc.
+Manually override a slot's status.
 
-**Query Parameters (`ReportFilterDto`)**
+| Field | Type | Required | Allowed values |
+|---|---|---|---|
+| `status` | `string` | Yes | `Available` \| `Booked` \| `Blocked` \| `Cancelled` |
+
+| Status | Description |
+|---|---|
+| 200 OK | Returns updated `SlotDetailDto` |
+| 400 Bad Request | Invalid status value |
+| 404 Not Found | Slot not found |
+| 403 Forbidden | Not Admin |
+
+---
+
+## 12. Consultation Endpoints — `/api/consultations`
+
+> **Controller-level auth:** Doctor, Admin, or Patient.  
+> Write endpoints (POST, PUT) are Doctor / Admin only.  
+> **Status rule on create:** Linked appointment must have status `Checked-In`, `In Progress`, or `Completed`.  
+> **Doctor ownership on create:** A Doctor caller can only create a consultation for their own appointment.  
+> **Duplicate guard:** Only one consultation per appointment.  
+> **`appointmentId` is immutable** after creation.  
+> **Prescription duplicate guard:** Same `medicineId` cannot appear twice in one consultation.
+
+---
+
+### `GET /api/consultations`
+**Auth:** Admin only · Query: `pageNumber`, `pageSize` ? `PaginationResponse<ConsultationDto>` ordered by `CreatedAt` desc
+
+### `GET /api/consultations/doctor/me`
+**Auth:** Doctor only · Query: `pageNumber`, `pageSize` ? `PaginationResponse<ConsultationDto>`
+
+### `GET /api/consultations/{id}`
+**Auth:** Doctor / Admin / Patient (Patient: own only)
+
+### `GET /api/consultations/appointment/{appointmentId}`
+**Auth:** Doctor / Admin / Patient
+
+### `GET /api/consultations/me`
+**Auth:** Patient only · Query: `pageNumber`, `pageSize` ? `PaginationResponse<ConsultationDto>`
+
+### `POST /api/consultations`
+**Auth:** Doctor / Admin
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `appointmentId` | `int` | Yes | Must be `Checked-In`, `In Progress`, or `Completed` |
+| `chiefComplaint` | `string` | No | Max 1000 |
+| `examination` | `string` | No | Max 1000 |
+| `diagnosisNotes` | `string` | No | Max 500 |
+| `treatmentPlan` | `string` | No | Max 1000 |
+| `icdId` | `int` | No | ICD-10 code reference |
+
+201 Created / 400 / 403
+
+### `PUT /api/consultations/{id}`
+**Auth:** Doctor / Admin — `appointmentId` is read-only · 200 / 404
+
+### `POST /api/consultations/{id}/prescriptions`
+**Auth:** Doctor / Admin — duplicate `medicineId` rejected (400) · 200 / 404
+
+| Field | Type | Required |
+|---|---|---|
+| `medicineId` | `int` | Yes |
+| `dosage` | `string` | No |
+| `frequency` | `string` | No |
+| `route` | `string` | No |
+| `durationDays` | `int` | No |
+| `instructions` | `string` | No |
+
+### `POST /api/consultations/{id}/lab-tests`
+**Auth:** Doctor / Admin — ordered test created with `Status = "Pending"` · 200 / 404
+
+| Field | Type | Required |
+|---|---|---|
+| `labTestId` | `int` | Yes |
+
+---
+
+## 13. Lab Test Endpoints — `/api/lab-tests`
+
+### `PUT /api/lab-tests/{orderedTestId}/result`
+**Auth:** Admin / Doctor · Sets `ResultDate = UtcNow`
+
+| Field | Type | Required |
+|---|---|---|
+| `result` | `string` | Yes (max 2000) |
+
+200 / 400 / 403 / 404
+
+### `GET /api/lab-tests/patient/{patientId}`
+**Auth:** Admin / Doctor ? `IEnumerable<LabResultDto>`
+
+### `GET /api/lab-tests/consultation/{consultationId}`
+**Auth:** Admin / Doctor ? `IEnumerable<LabResultDto>`
+
+### `GET /api/lab-tests/catalogue`
+**Auth:** Any authenticated user · Query: `search`, `pageNumber` (default 1), `pageSize` (default 20, max 100)
+
+Case-insensitive partial match on `TestName`, sorted alphabetically ? `PaginationResponse<LabTestCatalogueDto>`
+
+### `GET /api/lab-tests/catalogue/{id}`
+**Auth:** Any authenticated user ? `LabTestCatalogueDto` · 404 if not found
+
+---
+
+## 14. Medical History Endpoints
+
+### `GET /api/patients/{patientId}/medical-history`
+**Auth:** Admin / Doctor ? `MedicalHistoryDto` · 404 · 403
+
+### `GET /api/patients/me/medical-history`
+**Auth:** Patient only ? own `MedicalHistoryDto` · 404
+
+---
+
+## 15. Feedback Endpoints — `/api/feedback`
+
+> One feedback per consultation (UNIQUE constraint).  
+> Only allowed for appointments with status `Completed`.  
+> Only the submitting Patient may edit/delete (Admin may also delete).
+
+### `POST /api/feedback`
+**Auth:** Patient only
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `consultationId` | `int` | Yes | Must be linked to a `Completed` appointment |
+| `rating` | `int` | Yes | 1 (Very Poor) – 5 (Excellent) |
+| `comment` | `string` | No | Max 1000 chars |
+
+201 Created / 400 / 403 / 404 / 409 (duplicate or non-completed)
+
+### `PUT /api/feedback/{feedbackId}`
+**Auth:** Patient (own) — sets `isEdited = true`, `updatedAt = UtcNow`
+
+| Field | Type |
+|---|---|
+| `rating` | `int?` (1–5) |
+| `comment` | `string?` |
+
+200 / 400 / 403 / 404
+
+### `GET /api/feedback/consultation/{consultationId}`
+**Auth:** Patient (own) / Doctor (own consultation) / Admin ? `SessionFeedbackDto`
+
+### `GET /api/feedback/doctor/{doctorId}`
+**Auth:** Admin / Doctor (own) ? `IEnumerable<SessionFeedbackDto>` ordered `CreatedAt` desc
+
+### `GET /api/feedback/patient/{patientId}`
+**Auth:** Admin / Patient (own) ? `IEnumerable<SessionFeedbackDto>` ordered `CreatedAt` desc
+
+### `DELETE /api/feedback/{feedbackId}`
+**Auth:** Patient (own) / Admin · hard-delete · 204 / 403 / 404
+
+---
+
+## 16. Admin Report Endpoints — `/api/admin/reports`
+
+> All endpoints require the `Admin` role. Backed by SQL Server views.
+
+### `GET /api/admin/reports/appointments`
+**Auth:** Admin only · Sourced from `vw_AppointmentReport`
+
+**Query (`ReportFilterDto`)**
 
 | Parameter | Type | Description |
 |---|---|---|
 | `from` | `DateTime?` | Inclusive UTC lower bound on `AppointmentStart` |
-| `to` | `DateTime?` | Inclusive UTC upper bound on `AppointmentStart` |
-| `status` | `string?` | Exact match on status name (e.g. `Scheduled`, `Completed`, `Cancelled`) |
-| `doctorId` | `int?` | Restrict to a single doctor |
-| `pageNumber` | `int` | 1-based, default `1` |
-| `pageSize` | `int` | 1–100, default `20` |
+| `to` | `DateTime?` | Inclusive UTC upper bound |
+| `status` | `string?` | Exact match on status name |
+| `doctorId` | `int?` | Restrict to one doctor |
+| `pageNumber` | `int` | Default 1 |
+| `pageSize` | `int` | 1–100, default 20 |
 
 Returns `PaginationResponse<AppointmentReportDto>`.
 
-| Status | Description |
-|---|---|
-| 200 OK | Paginated report returned |
-| 400 Bad Request | Filter validation error |
-| 401 Unauthorized | Token missing |
-| 403 Forbidden | Not Admin |
-
----
-
 ### `GET /api/admin/reports/doctors`
-**Auth:** Required — Admin only · Query: `from` (DateTime? UTC), `to` (DateTime? UTC)
+**Auth:** Admin only · Sourced from `vw_DoctorWorkloadReport` · Query: `from`, `to`
 
-Returns a workload summary for every active doctor from `vw_DoctorWorkloadReport`.  
-When `from`/`to` are provided only doctors with at least one appointment in that window are included.  
-Results are ordered alphabetically by doctor name.
-
-Returns `IEnumerable<DoctorWorkloadDto>`.
-
-| Status | Description |
-|---|---|
-| 200 OK | Workload report returned |
-| 401 Unauthorized | Token missing |
-| 403 Forbidden | Not Admin |
+Returns `IEnumerable<DoctorWorkloadDto>` ordered alphabetically by doctor name.
 
 ---
 
-## 16. Medicine Catalogue Endpoints — `/api/medicines`
+## 17. Medicine Catalogue Endpoints — `/api/medicines`
 
-> All endpoints require any valid JWT (Doctor, Admin, or Patient).
-
----
+> Any valid JWT (Doctor / Admin / Patient).
 
 ### `GET /api/medicines`
-**Auth:** Required — any authenticated user · Query: `search` (optional), `pageNumber` (default `1`), `pageSize` (default `20`, max `100`)
-
-Returns a paginated, alphabetically sorted list of medicines from the catalogue.  
-`search` is a case-insensitive partial match on `MedicineName` (e.g. `"para"` matches `"Paracetamol 500mg"`).
-
-Returns `PaginationResponse<MedicineDto>`.
-
-| Status | Description |
-|---|---|
-| 200 OK | Paginated medicine list returned |
-| 401 Unauthorized | Token missing |
-
----
+Query: `search`, `pageNumber` (default 1), `pageSize` (default 20, max 100) ? `PaginationResponse<MedicineDto>`
 
 ### `GET /api/medicines/{id}`
-**Auth:** Required — any authenticated user
-
-Returns a single medicine by `MedicineId`.
-
-| Status | Description |
-|---|---|
-| 200 OK | Returns `MedicineDto` |
-| 401 Unauthorized | Token missing |
-| 404 Not Found | Medicine not found |
+? `MedicineDto` · 404 if not found
 
 ---
 
-## 17. Appointment Status State Machine
+## 18. Appointment Status State Machine
 
 Terminal states (`Completed`, `Cancelled`, `No-Show`) cannot be left once entered.
 
@@ -1229,25 +949,25 @@ Terminal states (`Completed`, `Cancelled`, `No-Show`) cannot be left once entere
 | Any non-terminal ? `No-Show` | ? | ? | ? |
 | Any non-terminal ? `Rescheduled` | ? | ? | ? |
 
-> Transitions not listed above are rejected with `400 Bad Request`.  
-> Attempting to leave a terminal state also returns `400 Bad Request`.
+> Unlisted transitions ? 400 Bad Request.  
+> Leaving a terminal state ? 400 Bad Request.
 
 ---
 
-## 18. Data Schemas
+## 19. Data Schemas
 
 ### `AuthResponseDto`
 
 | Field | Type | Description |
 |---|---|---|
 | `userId` | `int` | User primary key |
-| `email` | `string` | Email address |
+| `email` | `string` | Email |
 | `token` | `string` | JWT access token (60 min) |
-| `refreshToken` | `string` | Refresh token — store securely |
-| `tokenExpiresAt` | `DateTime` | UTC expiry of the access token |
+| `refreshToken` | `string` | Refresh token |
+| `tokenExpiresAt` | `DateTime` | UTC access token expiry |
 | `role` | `string` | `Patient` \| `Doctor` \| `LabTechnician` \| `Admin` |
-| `emailVerified` | `bool` | Whether email is verified |
-| `profileCompleted` | `bool` | Whether patient/doctor profile is complete |
+| `emailVerified` | `bool` | |
+| `profileCompleted` | `bool` | Whether profile setup is done |
 
 ---
 
@@ -1256,14 +976,24 @@ Terminal states (`Completed`, `Cancelled`, `No-Show`) cannot be left once entere
 | Field | Type | Description |
 |---|---|---|
 | `appointmentId` | `int` | Primary key |
-| `patientId` | `int` | Linked patient ID |
-| `patientName` | `string` | Patient's full name |
-| `doctorId` | `int` | Linked doctor ID |
-| `doctorName` | `string` | Doctor's full name |
-| `appointmentStart` | `DateTime` | UTC start time |
-| `appointmentEnd` | `DateTime` | UTC end time |
-| `reason` | `string` | Reason for visit |
+| `patientId` | `int` | |
+| `patientName` | `string` | |
+| `doctorId` | `int` | |
+| `doctorName` | `string` | |
+| `slotId` | `int?` | Linked `AppointmentSlot` ID (`null` for legacy appointments) |
+| `appointmentStart` | `DateTime` | UTC start (copied from slot) |
+| `appointmentEnd` | `DateTime` | UTC end (copied from slot) |
+| `reason` | `string?` | |
 | `status` | `string` | `Scheduled` \| `Confirmed` \| `Checked-In` \| `In Progress` \| `Completed` \| `Cancelled` \| `No-Show` \| `Rescheduled` |
+
+---
+
+### `CreateAppointmentDto`
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `slotId` | `int` | Yes | ID of an `Available` slot |
+| `reason` | `string?` | No | Max 500 chars |
 
 ---
 
@@ -1271,26 +1001,91 @@ Terminal states (`Completed`, `Cancelled`, `No-Show`) cannot be left once entere
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `appointmentStart` | `DateTime` | Yes | New UTC start time |
-| `appointmentEnd` | `DateTime` | Yes | New UTC end time — must be after `appointmentStart` |
+| `newSlotId` | `int` | Yes | ID of a different `Available` slot |
 
 ---
 
-### `ConsultationDto`
+### `AvailabilityTemplateDto`
 
 | Field | Type | Description |
 |---|---|---|
-| `consultationId` | `int` | Primary key |
-| `appointmentId` | `int` | Linked appointment ID (immutable) |
-| `patientId` | `int` | Resolved patient ID |
-| `chiefComplaint` | `string?` | Chief complaint |
-| `examination` | `string?` | Examination notes |
-| `diagnosisNotes` | `string?` | Diagnosis |
-| `treatmentPlan` | `string?` | Treatment plan |
-| `icdCode` | `string?` | ICD-10 code text |
-| `createdAt` | `DateTime` | UTC creation timestamp |
-| `prescriptions` | `List<PrescriptionDto>` | Linked prescriptions |
-| `orderedTests` | `List<OrderedTestDto>` | Linked ordered lab tests |
+| `id` | `int` | Primary key |
+| `doctorId` | `int` | |
+| `doctorName` | `string` | |
+| `dayOfWeek` | `int` | 0–6 |
+| `dayName` | `string` | e.g. `"Monday"` |
+| `startTime` | `TimeSpan` | |
+| `endTime` | `TimeSpan` | |
+| `slotDurationMinutes` | `int` | |
+| `effectiveFromDate` | `DateOnly` | |
+| `effectiveToDate` | `DateOnly?` | |
+| `isActive` | `bool` | |
+| `createdAt` | `DateTime` | UTC |
+
+---
+
+### `AvailabilityDayDto`
+
+| Field | Type | Description |
+|---|---|---|
+| `id` | `int` | Primary key |
+| `doctorId` | `int` | |
+| `date` | `DateOnly` | Calendar date |
+| `startTime` | `TimeSpan` | |
+| `endTime` | `TimeSpan` | |
+| `slotDurationMinutes` | `int` | |
+| `status` | `string` | `Open` \| `Closed` \| `Leave` \| `Holiday` |
+| `sourceTemplateId` | `int?` | Template that generated this day |
+| `totalSlots` | `int` | |
+| `availableSlots` | `int` | |
+
+---
+
+### `SlotDto`
+
+| Field | Type | Description |
+|---|---|---|
+| `id` | `int` | Primary key |
+| `doctorId` | `int` | |
+| `availabilityDayId` | `int` | Parent day |
+| `slotStart` | `DateTime` | UTC |
+| `slotEnd` | `DateTime` | UTC |
+| `status` | `string` | `Available` \| `Booked` \| `Blocked` \| `Cancelled` |
+| `appointmentId` | `int?` | Set once booked |
+
+---
+
+### `SlotDetailDto`
+
+| Field | Type | Description |
+|---|---|---|
+| `slotId` | `int` | Primary key |
+| `doctorId` | `int` | |
+| `slotStart` | `DateTime` | UTC |
+| `slotEnd` | `DateTime` | UTC |
+| `status` | `string` | |
+| `appointmentId` | `int?` | |
+
+---
+
+### `DoctorCalendarDayDto`
+
+| Field | Type | Description |
+|---|---|---|
+| `date` | `DateOnly` | Calendar date |
+| `dayStatus` | `string` | `Open` \| `Closed` \| `Leave` \| `Holiday` \| `NoSchedule` |
+| `totalSlots` | `int` | |
+| `availableSlots` | `int` | |
+| `bookedSlots` | `int` | |
+
+---
+
+### `PatientAvailabilityPreviewDto`
+
+| Field | Type | Description |
+|---|---|---|
+| `date` | `DateOnly` | Calendar date |
+| `availableSlots` | `int` | Count of `Available` slots |
 
 ---
 
@@ -1298,18 +1093,18 @@ Terminal states (`Completed`, `Cancelled`, `No-Show`) cannot be left once entere
 
 | Field | Type | Description |
 |---|---|---|
-| `feedbackId` | `int` | Primary key |
-| `consultationId` | `int` | Linked consultation ID |
-| `patientId` | `int` | Submitting patient ID |
-| `patientName` | `string` | Patient's full name |
-| `doctorId` | `int` | Doctor linked through the consultation's appointment |
-| `doctorName` | `string` | Doctor's full name |
-| `rating` | `int` | 1–5 numeric rating |
+| `feedbackId` | `int` | |
+| `consultationId` | `int` | |
+| `patientId` | `int` | |
+| `patientName` | `string` | |
+| `doctorId` | `int` | |
+| `doctorName` | `string` | |
+| `rating` | `int` | 1–5 |
 | `ratingLabel` | `string` | `Very Poor` \| `Poor` \| `Average` \| `Good` \| `Excellent` |
-| `comment` | `string?` | Optional free-text comment (max 1000 chars) |
-| `createdAt` | `DateTime` | UTC submission timestamp |
-| `isEdited` | `bool` | `true` if the patient has edited their feedback |
-| `updatedAt` | `DateTime?` | UTC timestamp of last edit |
+| `comment` | `string?` | Max 1000 chars |
+| `createdAt` | `DateTime` | UTC |
+| `isEdited` | `bool` | |
+| `updatedAt` | `DateTime?` | UTC of last edit |
 
 ---
 
@@ -1317,17 +1112,17 @@ Terminal states (`Completed`, `Cancelled`, `No-Show`) cannot be left once entere
 
 | Field | Type | Description |
 |---|---|---|
-| `appointmentId` | `int` | Primary key |
-| `appointmentStart` | `DateTime` | UTC start |
-| `appointmentEnd` | `DateTime` | UTC end |
-| `patientName` | `string` | Patient's full name |
-| `patientPhone` | `string?` | Patient's phone number |
-| `mrn` | `string` | Patient's Medical Record Number |
-| `doctorName` | `string` | Attending doctor's full name |
-| `departmentName` | `string?` | Doctor's department |
-| `statusName` | `string` | Appointment status |
-| `reason` | `string?` | Visit reason |
-| `hasConsultation` | `bool` | Whether a consultation record exists |
+| `appointmentId` | `int` | |
+| `appointmentStart` | `DateTime` | |
+| `appointmentEnd` | `DateTime` | |
+| `patientName` | `string` | |
+| `patientPhone` | `string?` | |
+| `mrn` | `string` | |
+| `doctorName` | `string` | |
+| `departmentName` | `string?` | |
+| `statusName` | `string` | |
+| `reason` | `string?` | |
+| `hasConsultation` | `bool` | |
 
 ---
 
@@ -1335,65 +1130,32 @@ Terminal states (`Completed`, `Cancelled`, `No-Show`) cannot be left once entere
 
 | Field | Type | Description |
 |---|---|---|
-| `doctorId` | `int` | Doctor primary key |
-| `doctorName` | `string` | Doctor's full name |
-| `qualification` | `string?` | Academic qualification |
-| `departmentName` | `string?` | Department |
-| `totalAppointments` | `int` | All non-deleted appointments |
-| `completedAppointments` | `int` | Appointments with `Completed` status |
-| `cancelledAppointments` | `int` | Appointments with `Cancelled` status |
-| `totalConsultations` | `int` | Consultation records linked to this doctor |
+| `doctorId` | `int` | |
+| `doctorName` | `string` | |
+| `qualification` | `string?` | |
+| `departmentName` | `string?` | |
+| `totalAppointments` | `int` | |
+| `completedAppointments` | `int` | |
+| `cancelledAppointments` | `int` | |
+| `totalConsultations` | `int` | |
 
 ---
 
-### `MedicineDto`
+### `ConsultationDto`
 
 | Field | Type | Description |
 |---|---|---|
-| `medicineId` | `int` | Primary key |
-| `medicineName` | `string` | Full name including strength (e.g. `Paracetamol 500mg`) |
-
----
-
-### `LabTestCatalogueDto`
-
-| Field | Type | Description |
-|---|---|---|
-| `labTestId` | `int` | Primary key |
-| `testName` | `string` | Full test name (e.g. `Complete Blood Count (CBC)`) |
-
----
-
-### `LabResultDto`
-
-| Field | Type | Description |
-|---|---|---|
-| `orderedTestId` | `int` | OrderedTest primary key |
-| `consultationId` | `int` | Linked consultation ID |
-| `labTestId` | `int` | Catalog lab test ID |
-| `testName` | `string` | Lab test name |
-| `status` | `string` | `Pending` \| `Completed` |
-| `result` | `string?` | Result text uploaded by Doctor/Admin |
-| `resultDate` | `DateTime?` | UTC date/time of upload |
-| `patientId` | `int` | Linked patient ID |
-| `patientName` | `string` | Patient's full name |
-
----
-
-### `DoctorScheduleDto`
-
-| Field | Type | Description |
-|---|---|---|
-| `scheduleId` | `int` | Primary key |
-| `doctorId` | `int` | Linked doctor ID |
-| `doctorName` | `string` | Doctor's full name |
-| `dayOfWeek` | `int` | `0 = Sunday … 6 = Saturday` |
-| `dayName` | `string` | e.g. `"Monday"` |
-| `startTime` | `TimeSpan` | e.g. `09:00:00` |
-| `endTime` | `TimeSpan` | e.g. `17:00:00` |
-| `slotDurationMinutes` | `int` | Duration per appointment slot |
-| `isActive` | `bool` | Whether this slot is active |
-| `generatedSlots` | `List<string>` | e.g. `["09:00 - 09:30", "09:30 - 10:00", …]` |
+| `consultationId` | `int` | |
+| `appointmentId` | `int` | Immutable after creation |
+| `patientId` | `int` | |
+| `chiefComplaint` | `string?` | |
+| `examination` | `string?` | |
+| `diagnosisNotes` | `string?` | |
+| `treatmentPlan` | `string?` | |
+| `icdCode` | `string?` | |
+| `createdAt` | `DateTime` | |
+| `prescriptions` | `List<PrescriptionDto>` | |
+| `orderedTests` | `List<OrderedTestDto>` | |
 
 ---
 
@@ -1401,55 +1163,48 @@ Terminal states (`Completed`, `Cancelled`, `No-Show`) cannot be left once entere
 
 | Field | Type | Description |
 |---|---|---|
-| `patientId` | `int` | Patient primary key |
-| `patientName` | `string` | Full name |
-| `mrn` | `string` | Medical Record Number |
-| `dateOfBirth` | `DateOnly` | Date of birth |
-| `gender` | `string?` | Gender |
-| `bloodGroup` | `string?` | Blood group |
-| `allergies` | `List<string>` | Allergy names |
-| `visits` | `List<MedicalVisitDto>` | Chronological visits |
-
-**`MedicalVisitDto`** (nested in `visits`)
-
-| Field | Type | Description |
-|---|---|---|
-| `appointmentId` | `int` | Primary key |
-| `appointmentStart` | `DateTime` | UTC start |
-| `appointmentEnd` | `DateTime` | UTC end |
-| `reason` | `string?` | Visit reason |
-| `status` | `string` | Appointment status |
-| `doctorName` | `string` | Attending doctor |
-| `consultation` | `MedicalConsultationDto?` | `null` if not yet created |
-
-**`MedicalConsultationDto`** (nested in `consultation`)
-
-| Field | Type | Description |
-|---|---|---|
-| `consultationId` | `int` | Primary key |
-| `chiefComplaint` | `string?` | Chief complaint |
-| `examination` | `string?` | Examination notes |
-| `diagnosisNotes` | `string?` | Diagnosis |
-| `treatmentPlan` | `string?` | Treatment plan |
-| `notes` | `string?` | General notes |
-| `icdCode` | `string?` | ICD-10 code |
-| `createdAt` | `DateTime` | UTC creation timestamp |
-| `prescriptions` | `List<PrescriptionDto>` | Prescriptions |
-| `labTests` | `List<LabResultDto>` | Lab tests with results |
+| `patientId` | `int` | |
+| `patientName` | `string` | |
+| `mrn` | `string` | |
+| `dateOfBirth` | `DateOnly` | |
+| `gender` | `string?` | |
+| `bloodGroup` | `string?` | |
+| `allergies` | `List<string>` | |
+| `visits` | `List<MedicalVisitDto>` | |
 
 ---
 
-### `PrescriptionDto`
+### `MedicineDto`
 
 | Field | Type | Description |
 |---|---|---|
-| `prescriptionId` | `int` | Primary key |
-| `medicineName` | `string` | Medicine name from catalog |
-| `dosage` | `string?` | Dose e.g. `500 mg` |
-| `frequency` | `string?` | e.g. `Twice daily` |
-| `route` | `string?` | e.g. `Oral` |
-| `durationDays` | `int?` | Number of days |
-| `instructions` | `string?` | Patient instructions |
+| `medicineId` | `int` | |
+| `medicineName` | `string` | e.g. `Paracetamol 500mg` |
+
+---
+
+### `LabTestCatalogueDto`
+
+| Field | Type | Description |
+|---|---|---|
+| `labTestId` | `int` | |
+| `testName` | `string` | e.g. `Complete Blood Count (CBC)` |
+
+---
+
+### `LabResultDto`
+
+| Field | Type | Description |
+|---|---|---|
+| `orderedTestId` | `int` | |
+| `consultationId` | `int` | |
+| `labTestId` | `int` | |
+| `testName` | `string` | |
+| `status` | `string` | `Pending` \| `Completed` |
+| `result` | `string?` | |
+| `resultDate` | `DateTime?` | |
+| `patientId` | `int` | |
+| `patientName` | `string` | |
 
 ---
 
@@ -1457,14 +1212,14 @@ Terminal states (`Completed`, `Cancelled`, `No-Show`) cannot be left once entere
 
 | Field | Type | Description |
 |---|---|---|
-| `doctorId` | `int` | Primary key |
-| `licenseNumber` | `string` | Unique medical license |
-| `fullName` | `string` | Full name |
-| `qualification` | `string?` | Academic qualifications |
-| `experienceYears` | `int?` | Years of experience |
-| `isActive` | `bool` | Active flag |
-| `address` | `AddressDto?` | Linked address |
-| `departments` | `List<DepartmentDto>` | Assigned departments |
+| `doctorId` | `int` | |
+| `licenseNumber` | `string` | |
+| `fullName` | `string` | |
+| `qualification` | `string?` | |
+| `experienceYears` | `int?` | |
+| `isActive` | `bool` | |
+| `address` | `AddressDto?` | |
+| `departments` | `List<DepartmentDto>` | |
 
 ---
 
@@ -1472,44 +1227,21 @@ Terminal states (`Completed`, `Cancelled`, `No-Show`) cannot be left once entere
 
 | Field | Type | Description |
 |---|---|---|
-| `patientId` | `int` | Primary key |
-| `userId` | `int` | Linked user account ID |
-| `mrn` | `string` | System-generated MRN |
-| `fullName` | `string` | Full name |
-| `dateOfBirth` | `DateOnly` | Date of birth |
-| `gender` | `string?` | Gender |
-| `phoneNumber` | `string?` | Contact phone |
-| `bloodGroup` | `string?` | Blood group |
-| `emergencyContact` | `string?` | Emergency phone |
-| `address` | `AddressDto?` | Linked address |
-| `allergies` | `List<PatientAllergyDto>?` | Known allergies |
+| `patientId` | `int` | |
+| `userId` | `int` | |
+| `mrn` | `string` | |
+| `fullName` | `string` | |
+| `dateOfBirth` | `DateOnly` | |
+| `gender` | `string?` | |
+| `phoneNumber` | `string?` | |
+| `bloodGroup` | `string?` | |
+| `emergencyContact` | `string?` | |
+| `address` | `AddressDto?` | |
+| `allergies` | `List<PatientAllergyDto>?` | |
 
 ---
 
-### `AddressDto / CreateAddressDto`
-
-| Field | Type | In CreateDto | Description |
-|---|---|---|---|
-| `addressId` | `int` | No | Read-only |
-| `addressLine1` | `string` | Yes | Street / house number |
-| `addressLine2` | `string?` | Yes | Apartment (optional) |
-| `city` | `string` | Yes | City |
-| `state` | `string` | Yes | State / province |
-| `postalCode` | `string?` | Yes | ZIP / postal code |
-| `country` | `string` | Yes | Country |
-
----
-
-### `DepartmentDto`
-
-| Field | Type | Description |
-|---|---|---|
-| `departmentId` | `int` | Primary key |
-| `departmentName` | `string` | e.g. Cardiology |
-
----
-
-## 19. Quick Reference
+## 20. Quick Reference
 
 | Method | Route | Auth | Role(s) |
 |---|---|---|---|
@@ -1535,18 +1267,26 @@ Terminal states (`Completed`, `Cancelled`, `No-Show`) cannot be left once entere
 | POST | `/api/patients` | Yes | Admin |
 | PUT | `/api/patients/{id}` | Yes | Admin / Owner |
 | DELETE | `/api/patients/{id}` | Yes | Admin |
+| POST | `/api/appointments` | Yes | Patient |
 | GET | `/api/appointments` | Yes | Admin / Doctor |
 | GET | `/api/appointments/{id}` | Yes | Any (ownership enforced) |
-| GET | `/api/appointments/patient/{patientId}` | Yes | Any (Patient: own only) |
-| GET | `/api/appointments/doctor/me` | Yes | Doctor |
-| GET | `/api/appointments/doctor/{doctorId}` | Yes | Admin / Doctor |
-| GET | `/api/appointments/date-range` | Yes | Admin / Doctor |
 | GET | `/api/appointments/me` | Yes | Patient |
-| POST | `/api/appointments` | Yes | Any |
+| GET | `/api/appointments/doctor/me` | Yes | Doctor |
 | PATCH | `/api/appointments/{id}/reschedule` | Yes | Any (ownership enforced) |
-| PUT | `/api/appointments/{id}/status` | Yes | Admin / Doctor |
-| PUT | `/api/appointments/{id}` | Yes | Any (ownership enforced) |
+| PATCH | `/api/appointments/{id}/status` | Yes | Admin / Doctor |
 | DELETE | `/api/appointments/{id}` | Yes | Any (ownership enforced) |
+| POST | `/api/doctors/{doctorId}/availability-template` | Yes | Admin / Doctor |
+| GET | `/api/doctors/{doctorId}/availability-template` | No | — |
+| PATCH | `/api/doctors/availability-template/{templateId}` | Yes | Admin / Doctor |
+| DELETE | `/api/doctors/availability-template/{templateId}` | Yes | Admin / Doctor |
+| GET | `/api/doctors/{doctorId}/availability-days` | No | — |
+| PATCH | `/api/doctors/availability-day/{dayId}` | Yes | Admin / Doctor |
+| GET | `/api/doctors/{doctorId}/calendar` | No | — |
+| GET | `/api/doctors/{doctorId}/availability` | No | — |
+| POST | `/api/doctors/{doctorId}/leave` | Yes | Admin / Doctor |
+| GET | `/api/doctors/{doctorId}/slots` | No | — |
+| GET | `/api/slots/{slotId}` | No | — |
+| PATCH | `/api/slots/{slotId}` | Yes | Admin |
 | GET | `/api/consultations` | Yes | Admin |
 | GET | `/api/consultations/doctor/me` | Yes | Doctor |
 | GET | `/api/consultations/{id}` | Yes | Doctor / Admin / Patient (own) |
@@ -1559,12 +1299,8 @@ Terminal states (`Completed`, `Cancelled`, `No-Show`) cannot be left once entere
 | PUT | `/api/lab-tests/{orderedTestId}/result` | Yes | Admin / Doctor |
 | GET | `/api/lab-tests/patient/{patientId}` | Yes | Admin / Doctor |
 | GET | `/api/lab-tests/consultation/{consultationId}` | Yes | Admin / Doctor |
-| GET | `/api/lab-tests/catalogue` | Yes | Admin / Doctor / Patient |
-| GET | `/api/lab-tests/catalogue/{id}` | Yes | Admin / Doctor / Patient |
-| POST | `/api/doctors/{doctorId}/schedule` | Yes | Admin / Doctor |
-| GET | `/api/doctors/{doctorId}/schedule` | No | — |
-| PUT | `/api/doctors/schedule/{scheduleId}` | Yes | Admin / Doctor (own) |
-| DELETE | `/api/doctors/schedule/{scheduleId}` | Yes | Admin / Doctor (own) |
+| GET | `/api/lab-tests/catalogue` | Yes | Any |
+| GET | `/api/lab-tests/catalogue/{id}` | Yes | Any |
 | GET | `/api/patients/{patientId}/medical-history` | Yes | Admin / Doctor |
 | GET | `/api/patients/me/medical-history` | Yes | Patient |
 | POST | `/api/feedback` | Yes | Patient |

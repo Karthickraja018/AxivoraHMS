@@ -12,8 +12,8 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Axivora.Migrations
 {
     [DbContext(typeof(AxivoraDbContext))]
-    [Migration("20260311051620_admin")]
-    partial class admin
+    [Migration("20260311203425_InitialCreate")]
+    partial class InitialCreate
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -105,6 +105,15 @@ namespace Axivora.Migrations
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)");
 
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int?>("SlotId")
+                        .HasColumnType("int");
+
                     b.Property<int>("StatusId")
                         .HasColumnType("int");
 
@@ -176,6 +185,64 @@ namespace Axivora.Migrations
                     b.ToTable((string)null);
 
                     b.ToView("vw_AppointmentReport", (string)null);
+                });
+
+            modelBuilder.Entity("Axivora.Models.AppointmentSlot", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int?>("AppointmentId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("AvailabilityDayId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("DoctorId")
+                        .HasColumnType("int");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<DateTime>("SlotEnd")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("SlotStart")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasDefaultValue("Available");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AppointmentId")
+                        .IsUnique()
+                        .HasDatabaseName("UQ_AppointmentSlots_AppointmentId")
+                        .HasFilter("[AppointmentId] IS NOT NULL");
+
+                    b.HasIndex("Status")
+                        .HasDatabaseName("IX_AppointmentSlots_Status");
+
+                    b.HasIndex("AvailabilityDayId", "Status")
+                        .HasDatabaseName("IX_AppointmentSlots_AvailabilityDayId_Status");
+
+                    b.HasIndex("DoctorId", "SlotStart")
+                        .HasDatabaseName("IX_AppointmentSlots_DoctorId_SlotStart");
+
+                    b.ToTable("AppointmentSlots", null, t =>
+                        {
+                            t.HasCheckConstraint("CHK_AppointmentSlot_Times", "[SlotEnd] > [SlotStart]");
+                        });
                 });
 
             modelBuilder.Entity("Axivora.Models.AppointmentStatus", b =>
@@ -379,6 +446,122 @@ namespace Axivora.Migrations
                     b.ToTable("Doctors", (string)null);
                 });
 
+            modelBuilder.Entity("Axivora.Models.DoctorAvailabilityDay", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSDATETIME()");
+
+                    b.Property<DateOnly>("Date")
+                        .HasColumnType("date");
+
+                    b.Property<int>("DoctorId")
+                        .HasColumnType("int");
+
+                    b.Property<TimeSpan>("EndTime")
+                        .HasColumnType("time");
+
+                    b.Property<int>("SlotDurationMinutes")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(15);
+
+                    b.Property<int?>("SourceTemplateId")
+                        .HasColumnType("int");
+
+                    b.Property<TimeSpan>("StartTime")
+                        .HasColumnType("time");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasDefaultValue("Open");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SourceTemplateId");
+
+                    b.HasIndex("DoctorId", "Date")
+                        .IsUnique()
+                        .HasDatabaseName("UQ_AvailabilityDays_DoctorId_Date");
+
+                    b.HasIndex("DoctorId", "Date", "Status")
+                        .HasDatabaseName("IX_AvailabilityDays_DoctorId_Date_Status");
+
+                    b.ToTable("DoctorAvailabilityDays", null, t =>
+                        {
+                            t.HasCheckConstraint("CHK_AvailabilityDay_Times", "[EndTime] > [StartTime]");
+                        });
+                });
+
+            modelBuilder.Entity("Axivora.Models.DoctorAvailabilityTemplate", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSDATETIME()");
+
+                    b.Property<int>("DayOfWeek")
+                        .HasColumnType("int");
+
+                    b.Property<int>("DoctorId")
+                        .HasColumnType("int");
+
+                    b.Property<DateOnly>("EffectiveFromDate")
+                        .HasColumnType("date");
+
+                    b.Property<DateOnly?>("EffectiveToDate")
+                        .HasColumnType("date");
+
+                    b.Property<TimeSpan>("EndTime")
+                        .HasColumnType("time");
+
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(true);
+
+                    b.Property<int>("SlotDurationMinutes")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(15);
+
+                    b.Property<TimeSpan>("StartTime")
+                        .HasColumnType("time");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DoctorId", "DayOfWeek")
+                        .HasDatabaseName("IX_AvailabilityTemplates_DoctorId_DayOfWeek");
+
+                    b.HasIndex("DoctorId", "IsActive")
+                        .HasDatabaseName("IX_AvailabilityTemplates_DoctorId_IsActive");
+
+                    b.ToTable("DoctorAvailabilityTemplates", null, t =>
+                        {
+                            t.HasCheckConstraint("CHK_AvailabilityTemplate_DayOfWeek", "[DayOfWeek] >= 0 AND [DayOfWeek] <= 6");
+
+                            t.HasCheckConstraint("CHK_AvailabilityTemplate_SlotDuration", "[SlotDurationMinutes] >= 5 AND [SlotDurationMinutes] <= 120");
+
+                            t.HasCheckConstraint("CHK_AvailabilityTemplate_Times", "[EndTime] > [StartTime]");
+                        });
+                });
+
             modelBuilder.Entity("Axivora.Models.DoctorDepartment", b =>
                 {
                     b.Property<int>("Id")
@@ -402,49 +585,6 @@ namespace Axivora.Migrations
                         .HasDatabaseName("UQ_DoctorDepartment");
 
                     b.ToTable("DoctorDepartments", (string)null);
-                });
-
-            modelBuilder.Entity("Axivora.Models.DoctorSchedule", b =>
-                {
-                    b.Property<int>("ScheduleId")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("ScheduleId"));
-
-                    b.Property<int>("DayOfWeek")
-                        .HasColumnType("int");
-
-                    b.Property<int>("DoctorId")
-                        .HasColumnType("int");
-
-                    b.Property<TimeSpan>("EndTime")
-                        .HasColumnType("time");
-
-                    b.Property<bool>("IsActive")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bit")
-                        .HasDefaultValue(true);
-
-                    b.Property<int>("SlotDurationMinutes")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int")
-                        .HasDefaultValue(15);
-
-                    b.Property<TimeSpan>("StartTime")
-                        .HasColumnType("time");
-
-                    b.HasKey("ScheduleId");
-
-                    b.HasIndex("DoctorId", "DayOfWeek")
-                        .HasDatabaseName("IX_DoctorSchedules_DoctorId_DayOfWeek");
-
-                    b.ToTable("DoctorSchedules", null, t =>
-                        {
-                            t.HasCheckConstraint("CHK_DoctorSchedule_Times", "\"EndTime\" > \"StartTime\"");
-
-                            t.HasCheckConstraint("CHK_DoctorSchedules_DayOfWeek", "[DayOfWeek] >= 0 AND [DayOfWeek] <= 6");
-                        });
                 });
 
             modelBuilder.Entity("Axivora.Models.DoctorWorkloadReportView", b =>
@@ -507,6 +647,42 @@ namespace Axivora.Migrations
                         .HasDatabaseName("IX_ICDCodes_Code");
 
                     b.ToTable("ICDCodes", (string)null);
+                });
+
+            modelBuilder.Entity("Axivora.Models.IdempotencyRecord", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSDATETIME()");
+
+                    b.Property<string>("IdempotencyKey")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<string>("RequestHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("ResponsePayload")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("IdempotencyKey")
+                        .IsUnique()
+                        .HasDatabaseName("UQ_IdempotencyRecords_Key");
+
+                    b.ToTable("IdempotencyRecords", (string)null);
                 });
 
             modelBuilder.Entity("Axivora.Models.LabTest", b =>
@@ -999,6 +1175,32 @@ namespace Axivora.Migrations
                     b.Navigation("Status");
                 });
 
+            modelBuilder.Entity("Axivora.Models.AppointmentSlot", b =>
+                {
+                    b.HasOne("Axivora.Models.Appointment", "Appointment")
+                        .WithOne("Slot")
+                        .HasForeignKey("Axivora.Models.AppointmentSlot", "AppointmentId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("Axivora.Models.DoctorAvailabilityDay", "AvailabilityDay")
+                        .WithMany("Slots")
+                        .HasForeignKey("AvailabilityDayId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Axivora.Models.Doctor", "Doctor")
+                        .WithMany("AppointmentSlots")
+                        .HasForeignKey("DoctorId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Appointment");
+
+                    b.Navigation("AvailabilityDay");
+
+                    b.Navigation("Doctor");
+                });
+
             modelBuilder.Entity("Axivora.Models.AuditLog", b =>
                 {
                     b.HasOne("Axivora.Models.User", "User")
@@ -1046,6 +1248,35 @@ namespace Axivora.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("Axivora.Models.DoctorAvailabilityDay", b =>
+                {
+                    b.HasOne("Axivora.Models.Doctor", "Doctor")
+                        .WithMany("AvailabilityDays")
+                        .HasForeignKey("DoctorId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Axivora.Models.DoctorAvailabilityTemplate", "SourceTemplate")
+                        .WithMany("AvailabilityDays")
+                        .HasForeignKey("SourceTemplateId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("Doctor");
+
+                    b.Navigation("SourceTemplate");
+                });
+
+            modelBuilder.Entity("Axivora.Models.DoctorAvailabilityTemplate", b =>
+                {
+                    b.HasOne("Axivora.Models.Doctor", "Doctor")
+                        .WithMany("AvailabilityTemplates")
+                        .HasForeignKey("DoctorId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Doctor");
+                });
+
             modelBuilder.Entity("Axivora.Models.DoctorDepartment", b =>
                 {
                     b.HasOne("Axivora.Models.Department", "Department")
@@ -1061,17 +1292,6 @@ namespace Axivora.Migrations
                         .IsRequired();
 
                     b.Navigation("Department");
-
-                    b.Navigation("Doctor");
-                });
-
-            modelBuilder.Entity("Axivora.Models.DoctorSchedule", b =>
-                {
-                    b.HasOne("Axivora.Models.Doctor", "Doctor")
-                        .WithMany("DoctorSchedules")
-                        .HasForeignKey("DoctorId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
 
                     b.Navigation("Doctor");
                 });
@@ -1214,6 +1434,8 @@ namespace Axivora.Migrations
             modelBuilder.Entity("Axivora.Models.Appointment", b =>
                 {
                     b.Navigation("Consultation");
+
+                    b.Navigation("Slot");
                 });
 
             modelBuilder.Entity("Axivora.Models.AppointmentStatus", b =>
@@ -1239,11 +1461,25 @@ namespace Axivora.Migrations
 
             modelBuilder.Entity("Axivora.Models.Doctor", b =>
                 {
+                    b.Navigation("AppointmentSlots");
+
                     b.Navigation("Appointments");
 
-                    b.Navigation("DoctorDepartments");
+                    b.Navigation("AvailabilityDays");
 
-                    b.Navigation("DoctorSchedules");
+                    b.Navigation("AvailabilityTemplates");
+
+                    b.Navigation("DoctorDepartments");
+                });
+
+            modelBuilder.Entity("Axivora.Models.DoctorAvailabilityDay", b =>
+                {
+                    b.Navigation("Slots");
+                });
+
+            modelBuilder.Entity("Axivora.Models.DoctorAvailabilityTemplate", b =>
+                {
+                    b.Navigation("AvailabilityDays");
                 });
 
             modelBuilder.Entity("Axivora.Models.ICDCode", b =>

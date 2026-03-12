@@ -71,6 +71,22 @@ namespace Axivora.Migrations
                 });
 
             migrationBuilder.CreateTable(
+                name: "IdempotencyRecords",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    IdempotencyKey = table.Column<string>(type: "nvarchar(256)", maxLength: 256, nullable: false),
+                    RequestHash = table.Column<string>(type: "nvarchar(64)", maxLength: 64, nullable: false),
+                    ResponsePayload = table.Column<string>(type: "nvarchar(max)", nullable: false),
+                    CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false, defaultValueSql: "SYSDATETIME()")
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_IdempotencyRecords", x => x.Id);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "LabTests",
                 columns: table => new
                 {
@@ -115,8 +131,8 @@ namespace Axivora.Migrations
                 {
                     UserId = table.Column<int>(type: "int", nullable: false)
                         .Annotation("SqlServer:Identity", "1, 1"),
-                    Email = table.Column<string>(type: "nvarchar(150)", maxLength: 150, nullable: false),
-                    PasswordHash = table.Column<string>(type: "nvarchar(255)", maxLength: 255, nullable: false),
+                    Email = table.Column<string>(type: "nvarchar(256)", maxLength: 256, nullable: false),
+                    PasswordHash = table.Column<string>(type: "nvarchar(512)", maxLength: 512, nullable: false),
                     IsActive = table.Column<bool>(type: "bit", nullable: false, defaultValue: true),
                     IsDeleted = table.Column<bool>(type: "bit", nullable: false, defaultValue: false),
                     CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false, defaultValueSql: "SYSDATETIME()"),
@@ -194,7 +210,7 @@ namespace Axivora.Migrations
                     UserId = table.Column<int>(type: "int", nullable: false),
                     MRN = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: false),
                     FullName = table.Column<string>(type: "nvarchar(150)", maxLength: 150, nullable: false),
-                    DateOfBirth = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    DateOfBirth = table.Column<DateOnly>(type: "date", nullable: false),
                     Gender = table.Column<string>(type: "nvarchar(20)", maxLength: 20, nullable: true),
                     PhoneNumber = table.Column<string>(type: "nvarchar(20)", maxLength: 20, nullable: true),
                     BloodGroup = table.Column<string>(type: "nvarchar(10)", maxLength: 10, nullable: true),
@@ -218,6 +234,30 @@ namespace Axivora.Migrations
                         principalTable: "Users",
                         principalColumn: "UserId",
                         onDelete: ReferentialAction.Restrict);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "RefreshTokens",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    UserId = table.Column<int>(type: "int", nullable: false),
+                    Token = table.Column<string>(type: "nvarchar(512)", maxLength: 512, nullable: false),
+                    ExpiresAt = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false, defaultValueSql: "SYSDATETIME()"),
+                    IsRevoked = table.Column<bool>(type: "bit", nullable: false, defaultValue: false),
+                    RevokedAt = table.Column<DateTime>(type: "datetime2", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_RefreshTokens", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_RefreshTokens_Users_UserId",
+                        column: x => x.UserId,
+                        principalTable: "Users",
+                        principalColumn: "UserId",
+                        onDelete: ReferentialAction.Cascade);
                 });
 
             migrationBuilder.CreateTable(
@@ -247,6 +287,36 @@ namespace Axivora.Migrations
                 });
 
             migrationBuilder.CreateTable(
+                name: "DoctorAvailabilityTemplates",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    DoctorId = table.Column<int>(type: "int", nullable: false),
+                    DayOfWeek = table.Column<int>(type: "int", nullable: false),
+                    StartTime = table.Column<TimeSpan>(type: "time", nullable: false),
+                    EndTime = table.Column<TimeSpan>(type: "time", nullable: false),
+                    SlotDurationMinutes = table.Column<int>(type: "int", nullable: false, defaultValue: 15),
+                    EffectiveFromDate = table.Column<DateOnly>(type: "date", nullable: false),
+                    EffectiveToDate = table.Column<DateOnly>(type: "date", nullable: true),
+                    IsActive = table.Column<bool>(type: "bit", nullable: false, defaultValue: true),
+                    CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false, defaultValueSql: "SYSDATETIME()")
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_DoctorAvailabilityTemplates", x => x.Id);
+                    table.CheckConstraint("CHK_AvailabilityTemplate_DayOfWeek", "[DayOfWeek] >= 0 AND [DayOfWeek] <= 6");
+                    table.CheckConstraint("CHK_AvailabilityTemplate_SlotDuration", "[SlotDurationMinutes] >= 5 AND [SlotDurationMinutes] <= 120");
+                    table.CheckConstraint("CHK_AvailabilityTemplate_Times", "[EndTime] > [StartTime]");
+                    table.ForeignKey(
+                        name: "FK_DoctorAvailabilityTemplates_Doctors_DoctorId",
+                        column: x => x.DoctorId,
+                        principalTable: "Doctors",
+                        principalColumn: "DoctorId",
+                        onDelete: ReferentialAction.Restrict);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "DoctorDepartments",
                 columns: table => new
                 {
@@ -273,30 +343,6 @@ namespace Axivora.Migrations
                 });
 
             migrationBuilder.CreateTable(
-                name: "DoctorSchedules",
-                columns: table => new
-                {
-                    ScheduleId = table.Column<int>(type: "int", nullable: false)
-                        .Annotation("SqlServer:Identity", "1, 1"),
-                    DoctorId = table.Column<int>(type: "int", nullable: false),
-                    DayOfWeek = table.Column<int>(type: "int", nullable: false),
-                    StartTime = table.Column<TimeSpan>(type: "time", nullable: false),
-                    EndTime = table.Column<TimeSpan>(type: "time", nullable: false),
-                    SlotDurationMinutes = table.Column<int>(type: "int", nullable: false, defaultValue: 15),
-                    IsActive = table.Column<bool>(type: "bit", nullable: false, defaultValue: true)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_DoctorSchedules", x => x.ScheduleId);
-                    table.ForeignKey(
-                        name: "FK_DoctorSchedules_Doctors_DoctorId",
-                        column: x => x.DoctorId,
-                        principalTable: "Doctors",
-                        principalColumn: "DoctorId",
-                        onDelete: ReferentialAction.Cascade);
-                });
-
-            migrationBuilder.CreateTable(
                 name: "Appointments",
                 columns: table => new
                 {
@@ -305,11 +351,13 @@ namespace Axivora.Migrations
                     PatientId = table.Column<int>(type: "int", nullable: false),
                     DoctorId = table.Column<int>(type: "int", nullable: false),
                     StatusId = table.Column<int>(type: "int", nullable: false),
+                    SlotId = table.Column<int>(type: "int", nullable: true),
                     AppointmentStart = table.Column<DateTime>(type: "datetime2", nullable: false),
                     AppointmentEnd = table.Column<DateTime>(type: "datetime2", nullable: false),
                     Reason = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: true),
                     IsDeleted = table.Column<bool>(type: "bit", nullable: false, defaultValue: false),
-                    CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false, defaultValueSql: "SYSDATETIME()")
+                    CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false, defaultValueSql: "SYSDATETIME()"),
+                    RowVersion = table.Column<byte[]>(type: "rowversion", rowVersion: true, nullable: false)
                 },
                 constraints: table =>
                 {
@@ -358,6 +406,39 @@ namespace Axivora.Migrations
                 });
 
             migrationBuilder.CreateTable(
+                name: "DoctorAvailabilityDays",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    DoctorId = table.Column<int>(type: "int", nullable: false),
+                    Date = table.Column<DateOnly>(type: "date", nullable: false),
+                    StartTime = table.Column<TimeSpan>(type: "time", nullable: false),
+                    EndTime = table.Column<TimeSpan>(type: "time", nullable: false),
+                    SlotDurationMinutes = table.Column<int>(type: "int", nullable: false, defaultValue: 15),
+                    Status = table.Column<string>(type: "nvarchar(20)", maxLength: 20, nullable: false, defaultValue: "Open"),
+                    SourceTemplateId = table.Column<int>(type: "int", nullable: true),
+                    CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false, defaultValueSql: "SYSDATETIME()")
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_DoctorAvailabilityDays", x => x.Id);
+                    table.CheckConstraint("CHK_AvailabilityDay_Times", "[EndTime] > [StartTime]");
+                    table.ForeignKey(
+                        name: "FK_DoctorAvailabilityDays_DoctorAvailabilityTemplates_SourceTemplateId",
+                        column: x => x.SourceTemplateId,
+                        principalTable: "DoctorAvailabilityTemplates",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.SetNull);
+                    table.ForeignKey(
+                        name: "FK_DoctorAvailabilityDays_Doctors_DoctorId",
+                        column: x => x.DoctorId,
+                        principalTable: "Doctors",
+                        principalColumn: "DoctorId",
+                        onDelete: ReferentialAction.Restrict);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "Consultations",
                 columns: table => new
                 {
@@ -386,6 +467,44 @@ namespace Axivora.Migrations
                         column: x => x.ICDId,
                         principalTable: "ICDCodes",
                         principalColumn: "ICDId",
+                        onDelete: ReferentialAction.Restrict);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "AppointmentSlots",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    DoctorId = table.Column<int>(type: "int", nullable: false),
+                    AvailabilityDayId = table.Column<int>(type: "int", nullable: false),
+                    SlotStart = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    SlotEnd = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    Status = table.Column<string>(type: "nvarchar(20)", maxLength: 20, nullable: false, defaultValue: "Available"),
+                    AppointmentId = table.Column<int>(type: "int", nullable: true),
+                    RowVersion = table.Column<byte[]>(type: "rowversion", rowVersion: true, nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_AppointmentSlots", x => x.Id);
+                    table.CheckConstraint("CHK_AppointmentSlot_Times", "[SlotEnd] > [SlotStart]");
+                    table.ForeignKey(
+                        name: "FK_AppointmentSlots_Appointments_AppointmentId",
+                        column: x => x.AppointmentId,
+                        principalTable: "Appointments",
+                        principalColumn: "AppointmentId",
+                        onDelete: ReferentialAction.SetNull);
+                    table.ForeignKey(
+                        name: "FK_AppointmentSlots_DoctorAvailabilityDays_AvailabilityDayId",
+                        column: x => x.AvailabilityDayId,
+                        principalTable: "DoctorAvailabilityDays",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                    table.ForeignKey(
+                        name: "FK_AppointmentSlots_Doctors_DoctorId",
+                        column: x => x.DoctorId,
+                        principalTable: "Doctors",
+                        principalColumn: "DoctorId",
                         onDelete: ReferentialAction.Restrict);
                 });
 
@@ -424,7 +543,6 @@ namespace Axivora.Migrations
                 {
                     VitalId = table.Column<int>(type: "int", nullable: false)
                         .Annotation("SqlServer:Identity", "1, 1"),
-                    PatientId = table.Column<int>(type: "int", nullable: false),
                     ConsultationId = table.Column<int>(type: "int", nullable: false),
                     Temperature_C = table.Column<decimal>(type: "decimal(4,2)", precision: 4, scale: 2, nullable: true),
                     SystolicBP = table.Column<int>(type: "int", nullable: true),
@@ -443,12 +561,6 @@ namespace Axivora.Migrations
                         principalTable: "Consultations",
                         principalColumn: "ConsultationId",
                         onDelete: ReferentialAction.Cascade);
-                    table.ForeignKey(
-                        name: "FK_PatientVitals_Patients_PatientId",
-                        column: x => x.PatientId,
-                        principalTable: "Patients",
-                        principalColumn: "PatientId",
-                        onDelete: ReferentialAction.Restrict);
                 });
 
             migrationBuilder.CreateTable(
@@ -482,10 +594,52 @@ namespace Axivora.Migrations
                         onDelete: ReferentialAction.Restrict);
                 });
 
+            migrationBuilder.CreateTable(
+                name: "SessionFeedbacks",
+                columns: table => new
+                {
+                    FeedbackId = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    ConsultationId = table.Column<int>(type: "int", nullable: false),
+                    PatientId = table.Column<int>(type: "int", nullable: false),
+                    Rating = table.Column<int>(type: "int", nullable: false),
+                    Comment = table.Column<string>(type: "nvarchar(1000)", maxLength: 1000, nullable: true),
+                    CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false, defaultValueSql: "SYSDATETIME()"),
+                    IsEdited = table.Column<bool>(type: "bit", nullable: false, defaultValue: false),
+                    UpdatedAt = table.Column<DateTime>(type: "datetime2", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_SessionFeedbacks", x => x.FeedbackId);
+                    table.CheckConstraint("CHK_SessionFeedbacks_Rating", "[Rating] >= 1 AND [Rating] <= 5");
+                    table.ForeignKey(
+                        name: "FK_SessionFeedbacks_Consultations_ConsultationId",
+                        column: x => x.ConsultationId,
+                        principalTable: "Consultations",
+                        principalColumn: "ConsultationId",
+                        onDelete: ReferentialAction.Cascade);
+                    table.ForeignKey(
+                        name: "FK_SessionFeedbacks_Patients_PatientId",
+                        column: x => x.PatientId,
+                        principalTable: "Patients",
+                        principalColumn: "PatientId",
+                        onDelete: ReferentialAction.Restrict);
+                });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Appointments_AppointmentStart",
+                table: "Appointments",
+                column: "AppointmentStart");
+
             migrationBuilder.CreateIndex(
                 name: "IX_Appointments_DoctorId",
                 table: "Appointments",
                 column: "DoctorId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Appointments_DoctorId_AppointmentStart",
+                table: "Appointments",
+                columns: new[] { "DoctorId", "AppointmentStart" });
 
             migrationBuilder.CreateIndex(
                 name: "IX_Appointments_PatientId",
@@ -498,10 +652,42 @@ namespace Axivora.Migrations
                 column: "StatusId");
 
             migrationBuilder.CreateIndex(
+                name: "IX_AppointmentSlots_AvailabilityDayId_Status",
+                table: "AppointmentSlots",
+                columns: new[] { "AvailabilityDayId", "Status" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_AppointmentSlots_DoctorId_SlotStart",
+                table: "AppointmentSlots",
+                columns: new[] { "DoctorId", "SlotStart" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_AppointmentSlots_Status",
+                table: "AppointmentSlots",
+                column: "Status");
+
+            migrationBuilder.CreateIndex(
+                name: "UQ_AppointmentSlots_AppointmentId",
+                table: "AppointmentSlots",
+                column: "AppointmentId",
+                unique: true,
+                filter: "[AppointmentId] IS NOT NULL");
+
+            migrationBuilder.CreateIndex(
                 name: "IX_AppointmentStatus_StatusName",
                 table: "AppointmentStatus",
                 column: "StatusName",
                 unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_AuditLogs_CreatedAt",
+                table: "AuditLogs",
+                column: "CreatedAt");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_AuditLogs_EntityName_EntityId",
+                table: "AuditLogs",
+                columns: new[] { "EntityName", "EntityId" });
 
             migrationBuilder.CreateIndex(
                 name: "IX_AuditLogs_UserId",
@@ -524,6 +710,32 @@ namespace Axivora.Migrations
                 table: "Departments",
                 column: "DepartmentName",
                 unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_AvailabilityDays_DoctorId_Date_Status",
+                table: "DoctorAvailabilityDays",
+                columns: new[] { "DoctorId", "Date", "Status" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_DoctorAvailabilityDays_SourceTemplateId",
+                table: "DoctorAvailabilityDays",
+                column: "SourceTemplateId");
+
+            migrationBuilder.CreateIndex(
+                name: "UQ_AvailabilityDays_DoctorId_Date",
+                table: "DoctorAvailabilityDays",
+                columns: new[] { "DoctorId", "Date" },
+                unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_AvailabilityTemplates_DoctorId_DayOfWeek",
+                table: "DoctorAvailabilityTemplates",
+                columns: new[] { "DoctorId", "DayOfWeek" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_AvailabilityTemplates_DoctorId_IsActive",
+                table: "DoctorAvailabilityTemplates",
+                columns: new[] { "DoctorId", "IsActive" });
 
             migrationBuilder.CreateIndex(
                 name: "IX_DoctorDepartments_DepartmentId",
@@ -554,14 +766,15 @@ namespace Axivora.Migrations
                 unique: true);
 
             migrationBuilder.CreateIndex(
-                name: "IX_DoctorSchedules_DoctorId",
-                table: "DoctorSchedules",
-                column: "DoctorId");
-
-            migrationBuilder.CreateIndex(
                 name: "IX_ICDCodes_Code",
                 table: "ICDCodes",
                 column: "Code",
+                unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "UQ_IdempotencyRecords_Key",
+                table: "IdempotencyRecords",
+                column: "IdempotencyKey",
                 unique: true);
 
             migrationBuilder.CreateIndex(
@@ -585,6 +798,11 @@ namespace Axivora.Migrations
                 name: "IX_OrderedTests_LabTestId",
                 table: "OrderedTests",
                 column: "LabTestId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_OrderedTests_Status",
+                table: "OrderedTests",
+                column: "Status");
 
             migrationBuilder.CreateIndex(
                 name: "IX_PatientAllergies_PatientId",
@@ -614,11 +832,6 @@ namespace Axivora.Migrations
                 column: "ConsultationId");
 
             migrationBuilder.CreateIndex(
-                name: "IX_PatientVitals_PatientId",
-                table: "PatientVitals",
-                column: "PatientId");
-
-            migrationBuilder.CreateIndex(
                 name: "IX_Prescriptions_ConsultationId",
                 table: "Prescriptions",
                 column: "ConsultationId");
@@ -629,9 +842,31 @@ namespace Axivora.Migrations
                 column: "MedicineId");
 
             migrationBuilder.CreateIndex(
+                name: "IX_RefreshTokens_Token",
+                table: "RefreshTokens",
+                column: "Token",
+                unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_RefreshTokens_UserId",
+                table: "RefreshTokens",
+                column: "UserId");
+
+            migrationBuilder.CreateIndex(
                 name: "IX_Roles_RoleName",
                 table: "Roles",
                 column: "RoleName",
+                unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_SessionFeedbacks_PatientId",
+                table: "SessionFeedbacks",
+                column: "PatientId");
+
+            migrationBuilder.CreateIndex(
+                name: "UQ_SessionFeedbacks_ConsultationId",
+                table: "SessionFeedbacks",
+                column: "ConsultationId",
                 unique: true);
 
             migrationBuilder.CreateIndex(
@@ -656,13 +891,16 @@ namespace Axivora.Migrations
         protected override void Down(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.DropTable(
+                name: "AppointmentSlots");
+
+            migrationBuilder.DropTable(
                 name: "AuditLogs");
 
             migrationBuilder.DropTable(
                 name: "DoctorDepartments");
 
             migrationBuilder.DropTable(
-                name: "DoctorSchedules");
+                name: "IdempotencyRecords");
 
             migrationBuilder.DropTable(
                 name: "OrderedTests");
@@ -677,7 +915,16 @@ namespace Axivora.Migrations
                 name: "Prescriptions");
 
             migrationBuilder.DropTable(
+                name: "RefreshTokens");
+
+            migrationBuilder.DropTable(
+                name: "SessionFeedbacks");
+
+            migrationBuilder.DropTable(
                 name: "UserRoles");
+
+            migrationBuilder.DropTable(
+                name: "DoctorAvailabilityDays");
 
             migrationBuilder.DropTable(
                 name: "Departments");
@@ -686,13 +933,16 @@ namespace Axivora.Migrations
                 name: "LabTests");
 
             migrationBuilder.DropTable(
-                name: "Consultations");
-
-            migrationBuilder.DropTable(
                 name: "Medicines");
 
             migrationBuilder.DropTable(
+                name: "Consultations");
+
+            migrationBuilder.DropTable(
                 name: "Roles");
+
+            migrationBuilder.DropTable(
+                name: "DoctorAvailabilityTemplates");
 
             migrationBuilder.DropTable(
                 name: "Appointments");

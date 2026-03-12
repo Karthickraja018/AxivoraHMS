@@ -42,6 +42,11 @@ namespace Axivora.Data.Configurations
             builder.HasIndex(d => new { d.DoctorId, d.Date, d.Status })
                    .HasDatabaseName("IX_AvailabilityDays_DoctorId_Date_Status");
 
+            builder.HasOne(d => d.Doctor)
+                   .WithMany(d => d.AvailabilityDays)
+                   .HasForeignKey(d => d.DoctorId)
+                   .OnDelete(DeleteBehavior.Restrict);
+
             builder.HasOne(d => d.SourceTemplate)
                    .WithMany(t => t.AvailabilityDays)
                    .HasForeignKey(d => d.SourceTemplateId)

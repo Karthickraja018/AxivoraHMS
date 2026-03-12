@@ -1,6 +1,6 @@
 # Axivora HMS — REST API Documentation
 
-> **Version:** 1.4 · **Platform:** .NET 10 / C# 14 · **Auth:** JWT Bearer HS256
+**Version:** 1.5
 
 ---
 
@@ -15,17 +15,21 @@
 7. [Auth Endpoints](#7-auth-endpoints----apiauth)
 8. [Doctor Endpoints](#8-doctor-endpoints----apidoctors)
 9. [Patient Endpoints](#9-patient-endpoints----apipatients)
-10. [Appointment Endpoints](#10-appointment-endpoints----apiappointments)
-11. [Doctor Availability & Slot Endpoints](#11-doctor-availability--slot-endpoints)
-12. [Consultation Endpoints](#12-consultation-endpoints----apiconsultations)
-13. [Lab Test Endpoints](#13-lab-test-endpoints----apilab-tests)
-14. [Medical History Endpoints](#14-medical-history-endpoints)
-15. [Feedback Endpoints](#15-feedback-endpoints----apifeedback)
-16. [Admin Report Endpoints](#16-admin-report-endpoints----apiadminreports)
-17. [Medicine Catalogue Endpoints](#17-medicine-catalogue-endpoints----apimedicines)
-18. [Appointment Status State Machine](#18-appointment-status-state-machine)
-19. [Data Schemas](#19-data-schemas)
-20. [Quick Reference](#20-quick-reference)
+10. [Department Endpoints](#10-department-endpoints)
+11. [ICD Code Endpoints](#11-icd-code-endpoints)
+12. [Admin User Management](#12-admin-user-management)
+13. [Patient Vital Endpoints](#13-patient-vital-endpoints)
+14. [Appointment Endpoints](#14-appointment-endpoints----apiappointments)
+15. [Doctor Availability & Slot Endpoints](#15-doctor-availability--slot-endpoints)
+16. [Consultation Endpoints](#16-consultation-endpoints----apiconsultations)
+17. [Lab Test Endpoints](#17-lab-test-endpoints----apilab-tests)
+18. [Medical History Endpoints](#18-medical-history-endpoints)
+19. [Feedback Endpoints](#19-feedback-endpoints----apifeedback)
+20. [Admin Report Endpoints](#20-admin-report-endpoints----apiadminreports)
+21. [Medicine Catalogue Endpoints](#21-medicine-catalogue-endpoints----apimedicines)
+22. [Appointment Status State Machine](#22-appointment-status-state-machine)
+23. [Data Schemas](#23-data-schemas)
+24. [Quick Reference](#24-quick-reference)
 
 ---
 
@@ -389,7 +393,297 @@ Implements token rotation — supplied token is immediately revoked.
 
 ---
 
-## 10. Appointment Endpoints — `/api/appointments`
+## 10. Department Endpoints
+
+Base route: `/api/departments`
+
+> **Read access:** Any authenticated user.
+> **Write access:** Admin only.
+> **Soft-delete:** `DELETE` sets `IsActive = false` — the department record is preserved.
+> **Duplicate name guard:** `POST` and `PUT` reject a `departmentName` that already exists. `PUT` excludes the current record from the check.
+
+---
+
+### `GET /api/departments`
+**Auth:** Required — any authenticated user
+
+Returns a paginated list of departments. Query: `pageNumber`, `pageSize` ? `PaginationResponse<DepartmentDto>`
+
+| Status | Description |
+|---|---|
+| 200 OK | Paginated department list |
+| 401 Unauthorized | Token missing |
+
+---
+
+### `GET /api/departments/{id}`
+**Auth:** Required — any authenticated user
+
+| Status | Description |
+|---|---|
+| 200 OK | Returns `DepartmentDto` |
+| 401 Unauthorized | Token missing |
+| 404 Not Found | Department not found |
+
+---
+
+### `POST /api/departments`
+**Auth:** Required — Admin only
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `departmentName` | `string` | Yes | Max 100 chars; must be unique |
+| `description` | `string?` | No | Max 500 chars |
+| `isActive` | `bool` | No | Defaults to `true` |
+
+| Status | Description |
+|---|---|
+| 201 Created | Returns `DepartmentDto`; `Location` points to `GET /api/departments/{id}` |
+| 400 Bad Request | Validation error or duplicate department name |
+| 401 Unauthorized | Token missing |
+| 403 Forbidden | Not Admin |
+
+---
+
+### `PUT /api/departments/{id}`
+**Auth:** Required — Admin only
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `departmentName` | `string` | Yes | Max 100 chars; must be unique (excludes self) |
+| `description` | `string?` | No | Max 500 chars |
+| `isActive` | `bool` | Yes | Set to `false` to deactivate |
+
+| Status | Description |
+|---|---|
+| 200 OK | Returns updated `DepartmentDto` |
+| 400 Bad Request | Validation error or duplicate department name |
+| 401 Unauthorized | Token missing |
+| 403 Forbidden | Not Admin |
+| 404 Not Found | Department not found |
+
+---
+
+### `DELETE /api/departments/{id}`
+**Auth:** Required — Admin only
+
+Soft-deactivates the department (`IsActive = false`). The record is preserved.
+
+| Status | Description |
+|---|---|
+| 204 No Content | Deactivated |
+| 401 Unauthorized | Token missing |
+| 403 Forbidden | Not Admin |
+| 404 Not Found | Department not found |
+
+---
+
+## 11. ICD Code Endpoints
+
+Base route: `/api/icd-codes`
+
+> **Auth:** Admin, Doctor, or Patient.
+> **Read-only:** No write endpoints are exposed.
+> **`?search=` shorthand:** When supplied, the same value is applied to both `code` and `description` filters simultaneously (OR logic). Use `?code=` and `?description=` independently for field-specific filtering.
+
+---
+
+### `GET /api/icd-codes`
+**Auth:** Required — Admin / Doctor / Patient
+
+Returns a paginated list of ICD-10 codes with optional filtering.
+
+| Query Parameter | Type | Description |
+|---|---|---|
+| `search` | `string?` | OR match across both `Code` and `Description` fields |
+| `code` | `string?` | Partial match on ICD Code field only |
+| `description` | `string?` | Partial match on Description field only |
+| `pageNumber` | `int` | Default 1 |
+| `pageSize` | `int` | Default value from `PaginationParams` |
+
+Returns `PaginationResponse<ICDCodeDto>`.
+
+| Status | Description |
+|---|---|
+| 200 OK | Paginated ICD code list |
+| 401 Unauthorized | Token missing |
+| 403 Forbidden | Role not Admin / Doctor / Patient |
+
+---
+
+## 12. Admin User Management
+
+Base route: `/api/admin/users`
+
+> **Auth:** Admin only for all endpoints.
+> **No hard-delete:** Accounts are toggled via `PATCH` endpoints — no `DELETE` is exposed.
+> **`UpdatedAt` tracking:** Both `disable` and `enable` set `UpdatedAt = DateTime.UtcNow` on the user record.
+
+---
+
+### `GET /api/admin/users`
+**Auth:** Required — Admin only
+
+Returns a paginated, filterable list of all user accounts.
+
+| Query Parameter | Type | Description |
+|---|---|---|
+| `email` | `string?` | Partial match on email |
+| `role` | `string?` | Exact role name: `Admin`, `Doctor`, `Patient`, `LabTechnician` |
+| `isActive` | `bool?` | Filter by active / inactive status |
+| `pageNumber` | `int` | Default 1 |
+| `pageSize` | `int` | Default value from `PaginationParams` |
+
+Returns `PaginationResponse<AdminUserDto>`.
+
+| Status | Description |
+|---|---|
+| 200 OK | Paginated user list |
+| 401 Unauthorized | Token missing |
+| 403 Forbidden | Not Admin |
+
+---
+
+### `GET /api/admin/users/{id}`
+**Auth:** Required — Admin only
+
+| Status | Description |
+|---|---|
+| 200 OK | Returns `AdminUserDto` |
+| 401 Unauthorized | Token missing |
+| 403 Forbidden | Not Admin |
+| 404 Not Found | User not found |
+
+---
+
+### `PATCH /api/admin/users/{id}/disable`
+**Auth:** Required — Admin only
+
+Sets `IsActive = false` and `UpdatedAt = UtcNow` on the user account. A disabled account receives 401 on login.
+
+| Status | Description |
+|---|---|
+| 200 OK | Returns updated `AdminUserDto` with `isActive = false` |
+| 401 Unauthorized | Token missing |
+| 403 Forbidden | Not Admin |
+| 404 Not Found | User not found |
+
+---
+
+### `PATCH /api/admin/users/{id}/enable`
+**Auth:** Required — Admin only
+
+Sets `IsActive = true` and `UpdatedAt = UtcNow` on the user account.
+
+| Status | Description |
+|---|---|
+| 200 OK | Returns updated `AdminUserDto` with `isActive = true` |
+| 401 Unauthorized | Token missing |
+| 403 Forbidden | Not Admin |
+| 404 Not Found | User not found |
+
+---
+
+## 13. Patient Vital Endpoints
+
+Base route: `/api/patients/{patientId}/vitals`
+
+> **Nested route:** All endpoints are scoped to a patient via `{patientId}`.
+> **Read access:** Doctor and Admin can access any patient's vitals. A Patient caller can only view their own — enforced by `AuthorizePatientAccessAsync` (compares JWT `UserId` with `patient.UserId`).
+> **Write access:** Doctor and Admin only.
+> **`RecordedAt`:** Auto-set to `DateTime.UtcNow` on create — not supplied by the client.
+> **Hard delete:** `DELETE` permanently removes the vital record.
+> **Patient-exists guard:** Every operation validates `patientId` exists (404 if not).
+
+---
+
+### `GET /api/patients/{patientId}/vitals`
+**Auth:** Required — Doctor / Admin / own Patient
+
+Returns paginated vital records for the specified patient. Query: `pageNumber`, `pageSize` ? `PaginationResponse<PatientVitalDto>`
+
+| Status | Description |
+|---|---|
+| 200 OK | Paginated vital list |
+| 401 Unauthorized | Token missing |
+| 403 Forbidden | Patient caller accessing another patient's vitals |
+| 404 Not Found | Patient not found |
+
+---
+
+### `GET /api/patients/{patientId}/vitals/{vitalId}`
+**Auth:** Required — Doctor / Admin / own Patient
+
+| Status | Description |
+|---|---|
+| 200 OK | Returns `PatientVitalDto` |
+| 401 Unauthorized | Token missing |
+| 403 Forbidden | Patient caller accessing another patient's vitals |
+| 404 Not Found | Patient not found, vital not found, or vital does not belong to patient |
+
+---
+
+### `POST /api/patients/{patientId}/vitals`
+**Auth:** Required — Doctor / Admin only
+
+Records a new vital entry. `RecordedAt` is auto-set to `UtcNow` — do not supply it in the request body. All measurement fields are optional.
+
+| Field | Type | Constraints | Description |
+|---|---|---|---|
+| `height` | `decimal?` | 0.01 – 300 | Height in cm |
+| `weight` | `decimal?` | 0.01 – 700 | Weight in kg |
+| `bloodPressure` | `string?` | Max 20 chars | e.g. `"120/80"` |
+| `heartRate` | `int?` | 1 – 300 | Beats per minute |
+| `temperature` | `decimal?` | 30 – 45 | Body temperature in degrees C |
+
+| Status | Description |
+|---|---|
+| 201 Created | Returns `PatientVitalDto`; `Location` points to `GET /api/patients/{patientId}/vitals/{vitalId}` |
+| 400 Bad Request | Field value out of range |
+| 401 Unauthorized | Token missing |
+| 403 Forbidden | Not Doctor or Admin |
+| 404 Not Found | Patient not found |
+
+---
+
+### `PUT /api/patients/{patientId}/vitals/{vitalId}`
+**Auth:** Required — Doctor / Admin only
+
+Updates an existing vital record. All fields are optional.
+
+| Field | Type | Constraints |
+|---|---|---|
+| `height` | `decimal?` | 0.01 – 300 cm |
+| `weight` | `decimal?` | 0.01 – 700 kg |
+| `bloodPressure` | `string?` | Max 20 chars |
+| `heartRate` | `int?` | 1 – 300 bpm |
+| `temperature` | `decimal?` | 30 – 45 degrees C |
+
+| Status | Description |
+|---|---|
+| 200 OK | Returns updated `PatientVitalDto` |
+| 400 Bad Request | Field value out of range |
+| 401 Unauthorized | Token missing |
+| 403 Forbidden | Not Doctor or Admin |
+| 404 Not Found | Patient not found, or vital does not belong to patient |
+
+---
+
+### `DELETE /api/patients/{patientId}/vitals/{vitalId}`
+**Auth:** Required — Doctor / Admin only
+
+Permanently deletes the vital record (hard delete).
+
+| Status | Description |
+|---|---|
+| 204 No Content | Deleted |
+| 401 Unauthorized | Token missing |
+| 403 Forbidden | Not Doctor or Admin |
+| 404 Not Found | Patient not found, or vital does not belong to patient |
+
+---
+
+## 14. Appointment Endpoints
 
 > The appointment controller was **completely rewritten**. `POST` now requires a `slotId` instead of raw `AppointmentStart`/`AppointmentEnd`. `PUT` no longer exists — use `PATCH /{id}/status` for status changes. `PATCH /{id}/reschedule` now takes a `newSlotId` instead of new timestamps.
 
@@ -500,7 +794,7 @@ Moves an appointment to a **different available slot**. Both the old slot releas
 ### `PATCH /api/appointments/{id}/status`
 **Auth:** Required — Admin / Doctor only
 
-Transitions the appointment to a new named status. Validated against the [state machine](#18-appointment-status-state-machine).
+[state machine](#22-appointment-status-state-machine)
 
 **Request Body:** `{ "status": "Confirmed" }`
 
@@ -527,9 +821,9 @@ All three operations (slot release, soft-delete, status update) are wrapped in a
 
 ---
 
-## 11. Doctor Availability & Slot Endpoints
+## 15. Doctor Availability & Slot Endpoints
 
-Routes are all under `/api/doctors/{doctorId}` or `/api/doctors` (for non-doctor-scoped operations) and `/api/slots`.
+Routes are all under
 
 ---
 
@@ -753,7 +1047,7 @@ Manually override a slot's status.
 
 ---
 
-## 12. Consultation Endpoints — `/api/consultations`
+## 16. Consultation Endpoints
 
 > **Controller-level auth:** Doctor, Admin, or Patient.  
 > Write endpoints (POST, PUT) are Doctor / Admin only.  
@@ -818,7 +1112,7 @@ Manually override a slot's status.
 
 ---
 
-## 13. Lab Test Endpoints — `/api/lab-tests`
+## 17. Lab Test Endpoints
 
 ### `PUT /api/lab-tests/{orderedTestId}/result`
 **Auth:** Admin / Doctor · Sets `ResultDate = UtcNow`
@@ -845,9 +1139,9 @@ Case-insensitive partial match on `TestName`, sorted alphabetically ? `Paginatio
 
 ---
 
-## 14. Medical History Endpoints
+## 18. Medical History Endpoints
 
-### `GET /api/patients/{patientId}/medical-history`
+### `GET /api/patients
 **Auth:** Admin / Doctor ? `MedicalHistoryDto` · 404 · 403
 
 ### `GET /api/patients/me/medical-history`
@@ -855,7 +1149,7 @@ Case-insensitive partial match on `TestName`, sorted alphabetically ? `Paginatio
 
 ---
 
-## 15. Feedback Endpoints — `/api/feedback`
+## 19. Feedback Endpoints
 
 > One feedback per consultation (UNIQUE constraint).  
 > Only allowed for appointments with status `Completed`.  
@@ -896,7 +1190,7 @@ Case-insensitive partial match on `TestName`, sorted alphabetically ? `Paginatio
 
 ---
 
-## 16. Admin Report Endpoints — `/api/admin/reports`
+## 20. Admin Report Endpoints
 
 > All endpoints require the `Admin` role. Backed by SQL Server views.
 
@@ -923,7 +1217,7 @@ Returns `IEnumerable<DoctorWorkloadDto>` ordered alphabetically by doctor name.
 
 ---
 
-## 17. Medicine Catalogue Endpoints — `/api/medicines`
+## 21. Medicine Catalogue Endpoints
 
 > Any valid JWT (Doctor / Admin / Patient).
 
@@ -935,9 +1229,9 @@ Query: `search`, `pageNumber` (default 1), `pageSize` (default 20, max 100) ? `P
 
 ---
 
-## 18. Appointment Status State Machine
+## 22. Appointment Status State Machine
 
-Terminal states (`Completed`, `Cancelled`, `No-Show`) cannot be left once entered.
+Terminal states
 
 | Transition | Patient | Doctor | Admin |
 |---|:---:|:---:|:---:|
@@ -954,7 +1248,7 @@ Terminal states (`Completed`, `Cancelled`, `No-Show`) cannot be left once entere
 
 ---
 
-## 19. Data Schemas
+## 23. Data Schemas
 
 ### `AuthResponseDto`
 
@@ -1241,7 +1535,75 @@ Terminal states (`Completed`, `Cancelled`, `No-Show`) cannot be left once entere
 
 ---
 
-## 20. Quick Reference
+### `DepartmentDto`
+
+| Field | Type | Description |
+|---|---|---|
+| `departmentId` | `int` | Primary key |
+| `departmentName` | `string` | Max 100 chars |
+| `description` | `string?` | Max 500 chars |
+| `isActive` | `bool` | |
+
+---
+
+### `CreateDepartmentDto`
+
+| Field | Type | Required | Constraints |
+|---|---|---|---|
+| `departmentName` | `string` | Yes | Max 100 chars; must be unique |
+| `description` | `string?` | No | Max 500 chars |
+| `isActive` | `bool` | No | Defaults to `true` |
+
+---
+
+### `UpdateDepartmentDto`
+
+| Field | Type | Required | Constraints |
+|---|---|---|---|
+| `departmentName` | `string` | Yes | Max 100 chars; must be unique (excludes self) |
+| `description` | `string?` | No | Max 500 chars |
+| `isActive` | `bool` | Yes | |
+
+---
+
+### `ICDCodeDto`
+
+| Field | Type | Description |
+|---|---|---|
+| `id` | `int` | Primary key |
+| `code` | `string` | ICD-10 code (e.g. `J06.9`) |
+| `description` | `string` | Code description |
+
+---
+
+### `AdminUserDto`
+
+| Field | Type | Description |
+|---|---|---|
+| `id` | `int` | User primary key |
+| `email` | `string` | |
+| `role` | `string?` | `Admin` \| `Doctor` \| `Patient` \| `LabTechnician` |
+| `isActive` | `bool` | |
+| `createdAt` | `DateTime` | UTC creation time |
+
+---
+
+### `PatientVitalDto`
+
+| Field | Type | Description |
+|---|---|---|
+| `vitalId` | `int` | Primary key |
+| `patientId` | `int` | Owning patient |
+| `height` | `decimal?` | cm (0.01 – 300) |
+| `weight` | `decimal?` | kg (0.01 – 700) |
+| `bloodPressure` | `string?` | e.g. `"120/80"` (max 20 chars) |
+| `heartRate` | `int?` | bpm (1 – 300) |
+| `temperature` | `decimal?` | degrees C (30 – 45) |
+| `recordedAt` | `DateTime` | UTC — auto-set on create |
+
+---
+
+## 24. Quick Reference
 
 | Method | Route | Auth | Role(s) |
 |---|---|---|---|
@@ -1313,6 +1675,21 @@ Terminal states (`Completed`, `Cancelled`, `No-Show`) cannot be left once entere
 | GET | `/api/admin/reports/doctors` | Yes | Admin |
 | GET | `/api/medicines` | Yes | Any |
 | GET | `/api/medicines/{id}` | Yes | Any |
+| GET | `/api/departments` | Yes | Any |
+| GET | `/api/departments/{id}` | Yes | Any |
+| POST | `/api/departments` | Yes | Admin |
+| PUT | `/api/departments/{id}` | Yes | Admin |
+| DELETE | `/api/departments/{id}` | Yes | Admin |
+| GET | `/api/icd-codes` | Yes | Admin / Doctor / Patient |
+| GET | `/api/admin/users` | Yes | Admin |
+| GET | `/api/admin/users/{id}` | Yes | Admin |
+| PATCH | `/api/admin/users/{id}/disable` | Yes | Admin |
+| PATCH | `/api/admin/users/{id}/enable` | Yes | Admin |
+| GET | `/api/patients/{patientId}/vitals` | Yes | Doctor / Admin / Owner |
+| GET | `/api/patients/{patientId}/vitals/{vitalId}` | Yes | Doctor / Admin / Owner |
+| POST | `/api/patients/{patientId}/vitals` | Yes | Doctor / Admin |
+| PUT | `/api/patients/{patientId}/vitals/{vitalId}` | Yes | Doctor / Admin |
+| DELETE | `/api/patients/{patientId}/vitals/{vitalId}` | Yes | Doctor / Admin |
 
 ---
 

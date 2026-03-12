@@ -99,6 +99,11 @@ namespace Axivora
             builder.Services.AddScoped<IMedicalHistoryService, MedicalHistoryService>();
             builder.Services.AddScoped<IFeedbackService, FeedbackService>();
             builder.Services.AddScoped<IAdminReportService, AdminReportService>();
+            // New feature services
+            builder.Services.AddScoped<IDepartmentService, DepartmentService>();
+            builder.Services.AddScoped<IICDCodeService, ICDCodeService>();
+            builder.Services.AddScoped<IAdminUserService, AdminUserService>();
+            builder.Services.AddScoped<IPatientVitalService, PatientVitalService>();
             // Date-based slot scheduling services
             builder.Services.AddScoped<IDoctorAvailabilityTemplateService, DoctorAvailabilityTemplateService>();
             builder.Services.AddScoped<IDoctorAvailabilityService, DoctorAvailabilityService>();
@@ -119,6 +124,11 @@ namespace Axivora
             builder.Services.AddScoped<ILabTestRepository, LabTestRepository>();
             builder.Services.AddScoped<IMedicineRepository, MedicineRepository>();
             builder.Services.AddScoped<IAdminReportRepository, AdminReportRepository>();
+            // New feature repositories
+            builder.Services.AddScoped<IDepartmentRepository, DepartmentRepository>();
+            builder.Services.AddScoped<IICDCodeRepository, ICDCodeRepository>();
+            builder.Services.AddScoped<IAdminUserRepository, AdminUserRepository>();
+            builder.Services.AddScoped<IPatientVitalRepository, PatientVitalRepository>();
             // Date-based slot scheduling repositories
             builder.Services.AddScoped<IAvailabilityTemplateRepository, AvailabilityTemplateRepository>();
             builder.Services.AddScoped<IAvailabilityDayRepository, AvailabilityDayRepository>();

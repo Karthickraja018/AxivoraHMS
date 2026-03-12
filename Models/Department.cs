@@ -10,6 +10,11 @@ namespace Axivora.Models
         [Required(ErrorMessage = "Department name is required")]
         public string DepartmentName { get; set; } = null!;
 
+        [StringLength(500)]
+        public string? Description { get; set; }
+
+        public bool IsActive { get; set; } = true;
+
         // Navigation properties
         public ICollection<DoctorDepartment> DoctorDepartments { get; set; } = new List<DoctorDepartment>();
     }

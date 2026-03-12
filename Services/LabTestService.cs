@@ -91,5 +91,19 @@ namespace Axivora.Services
             PatientId      = ot.Consultation?.Appointment?.PatientId ?? 0,
             PatientName    = ot.Consultation?.Appointment?.Patient?.FullName ?? string.Empty
         };
+
+        public async Task<IEnumerable<PatientLabResultDto>> GetMyLabResultsAsync(int userId)
+        {
+            var orderedTests = await _repository.GetByUserIdAsync(userId);
+
+            return orderedTests.Select(ot => new PatientLabResultDto
+            {
+                LabTestName = ot.LabTest?.TestName ?? string.Empty,
+                Result      = ot.Result,
+                OrderedDate = ot.Consultation?.Appointment?.AppointmentStart ?? DateTime.MinValue,
+                ResultDate  = ot.ResultDate,
+                DoctorName  = ot.Consultation?.Appointment?.Doctor?.FullName ?? string.Empty
+            });
+        }
     }
 }

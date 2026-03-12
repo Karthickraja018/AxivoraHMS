@@ -41,11 +41,6 @@ namespace Axivora.Data.Configurations
                    .HasDefaultValueSql("SYSDATETIME()");
 
             // Relationships
-            builder.HasMany(c => c.PatientVitals)
-                   .WithOne(pv => pv.Consultation)
-                   .HasForeignKey(pv => pv.ConsultationId)
-                   .OnDelete(DeleteBehavior.Cascade);
-
             builder.HasMany(c => c.Prescriptions)
                    .WithOne(p => p.Consultation)
                    .HasForeignKey(p => p.ConsultationId)

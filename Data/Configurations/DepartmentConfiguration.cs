@@ -19,6 +19,13 @@ namespace Axivora.Data.Configurations
                    .IsRequired()
                    .HasMaxLength(100);
 
+            builder.Property(d => d.Description)
+                   .HasMaxLength(500);
+
+            builder.Property(d => d.IsActive)
+                   .IsRequired()
+                   .HasDefaultValue(true);
+
             builder.HasIndex(d => d.DepartmentName)
                    .IsUnique()
                    .HasDatabaseName("IX_Departments_DepartmentName");

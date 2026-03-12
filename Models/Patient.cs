@@ -47,5 +47,6 @@ namespace Axivora.Models
         public Address? Address { get; set; }
         public ICollection<PatientAllergy> PatientAllergies { get; set; } = new List<PatientAllergy>();
         public ICollection<Appointment> Appointments { get; set; } = new List<Appointment>();
+        public ICollection<PatientVital> PatientVitals { get; set; } = new List<PatientVital>();
     }
 }

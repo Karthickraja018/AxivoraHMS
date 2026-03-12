@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using System.Security.Claims;
 using Axivora.DTOs;
 using Axivora.Services.Interfaces;
 using Axivora.Helpers;
@@ -94,6 +95,21 @@ namespace Axivora.Controllers
 
             var result = await _labTestService.GetCatalogueAsync(search, pageNumber, pageSize);
             return Ok(result);
+        }
+
+        /// <summary>
+        /// Get all lab results for the currently authenticated patient.
+        /// </summary>
+        [HttpGet("me")]
+        [Authorize(Roles = "Patient")]
+        [ProducesResponseType(typeof(IEnumerable<PatientLabResultDto>), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
+        public async Task<ActionResult<IEnumerable<PatientLabResultDto>>> GetMyResults()
+        {
+            var userId = int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "0");
+            var results = await _labTestService.GetMyLabResultsAsync(userId);
+            return Ok(results);
         }
     }
 }

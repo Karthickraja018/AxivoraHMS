@@ -9,6 +9,7 @@ namespace Axivora.Repositories.Interfaces
         Task<bool> ConsultationExistsAsync(int consultationId);
         Task<IEnumerable<OrderedTest>> GetByPatientIdAsync(int patientId);
         Task<IEnumerable<OrderedTest>> GetByConsultationIdAsync(int consultationId);
+        Task<IEnumerable<OrderedTest>> GetByUserIdAsync(int userId);
         Task<int> CountCatalogueAsync(string? search);
         Task<IEnumerable<LabTest>> GetCataloguePagedAsync(string? search, int skip, int take);
         Task<LabTest?> GetCatalogueItemAsync(int id);

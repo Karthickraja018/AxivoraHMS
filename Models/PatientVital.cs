@@ -9,23 +9,22 @@ namespace Axivora.Models
         public int VitalId { get; set; }
 
         [Required]
-        public int ConsultationId { get; set; }
+        public int PatientId { get; set; }
 
-        public decimal? Temperature_C { get; set; }
+        public decimal? Height { get; set; }
 
-        public int? SystolicBP { get; set; }
+        public decimal? Weight { get; set; }
 
-        public int? DiastolicBP { get; set; }
+        [StringLength(20)]
+        public string? BloodPressure { get; set; }
 
-        public int? HeartRate_BPM { get; set; }
+        public int? HeartRate { get; set; }
 
-        public int? SpO2_Percentage { get; set; }
-
-        public decimal? Weight_KG { get; set; }
+        public decimal? Temperature { get; set; }
 
         public DateTime RecordedAt { get; set; } = DateTime.UtcNow;
 
         // Navigation property
-        public Consultation? Consultation { get; set; }
+        public Patient? Patient { get; set; }
     }
 }

@@ -22,5 +22,11 @@ namespace Axivora.Services.Interfaces
         /// </summary>
         /// <param name="id">The <c>LabTestId</c> to look up.</param>
         Task<LabTestCatalogueDto?> GetCatalogueItemAsync(int id);
+
+        /// <summary>
+        /// Returns all lab results belonging to the authenticated patient's consultations.
+        /// </summary>
+        /// <param name="userId">The <c>UserId</c> from the JWT claim.</param>
+        Task<IEnumerable<PatientLabResultDto>> GetMyLabResultsAsync(int userId);
     }
 }

@@ -31,4 +31,14 @@ namespace Axivora.DTOs
         /// <summary>Full test name (e.g. Complete Blood Count (CBC)).</summary>
         public string TestName { get; set; } = null!;
     }
+
+    /// <summary>Patient-facing view of their own lab results.</summary>
+    public class PatientLabResultDto
+    {
+        public string LabTestName { get; set; } = null!;
+        public string? Result { get; set; }
+        public DateTime OrderedDate { get; set; }
+        public DateTime? ResultDate { get; set; }
+        public string DoctorName { get; set; } = null!;
+    }
 }

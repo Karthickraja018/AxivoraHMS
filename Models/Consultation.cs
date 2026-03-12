@@ -33,7 +33,6 @@ namespace Axivora.Models
         // Navigation properties
         public Appointment? Appointment { get; set; }
         public ICDCode? ICDCode { get; set; }
-        public ICollection<PatientVital> PatientVitals { get; set; } = new List<PatientVital>();
         public ICollection<Prescription> Prescriptions { get; set; } = new List<Prescription>();
         public ICollection<OrderedTest> OrderedTests { get; set; } = new List<OrderedTest>();
 

@@ -43,6 +43,15 @@ namespace Axivora.Repositories
                 .OrderBy(ot => ot.OrderedTestId)
                 .ToListAsync();
 
+        public async Task<IEnumerable<OrderedTest>> GetByUserIdAsync(int userId) =>
+            await OrderedTestWithNavigationsQuery()
+                .Include(ot => ot.Consultation!)
+                    .ThenInclude(c => c!.Appointment!)
+                        .ThenInclude(a => a!.Doctor)
+                .Where(ot => ot.Consultation!.Appointment!.Patient!.UserId == userId)
+                .OrderByDescending(ot => ot.ResultDate ?? DateTime.MinValue)
+                .ToListAsync();
+
         public async Task<int> CountCatalogueAsync(string? search)
         {
             var query = _context.LabTests.AsQueryable();

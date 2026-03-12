@@ -13,12 +13,18 @@ namespace Axivora.Services
         private readonly IDoctorRepository _repository;
         private readonly IMapper _mapper;
         private readonly IPasswordHasher _passwordHasher;
+        private readonly IEmailService _emailService;
 
-        public DoctorService(IDoctorRepository repository, IMapper mapper, IPasswordHasher passwordHasher)
+        public DoctorService(
+            IDoctorRepository repository,
+            IMapper mapper,
+            IPasswordHasher passwordHasher,
+            IEmailService emailService)
         {
-            _repository = repository;
-            _mapper = mapper;
+            _repository   = repository;
+            _mapper       = mapper;
             _passwordHasher = passwordHasher;
+            _emailService = emailService;
         }
 
         public async Task<IEnumerable<DoctorDto>> GetAllDoctorsAsync()
@@ -74,12 +80,12 @@ namespace Axivora.Services
             {
                 var user = new User
                 {
-                    Email = createDoctorDto.Email,
+                    Email        = createDoctorDto.Email,
                     PasswordHash = _passwordHasher.Hash(createDoctorDto.Password),
-                    IsActive = true,
-                    IsDeleted = false,
-                    CreatedAt = DateTime.UtcNow,
-                    UpdatedAt = DateTime.UtcNow
+                    IsActive     = true,
+                    IsDeleted    = false,
+                    CreatedAt    = DateTime.UtcNow,
+                    UpdatedAt    = DateTime.UtcNow
                 };
                 await _repository.AddUserAsync(user);
                 await _repository.SaveChangesAsync();
@@ -106,15 +112,15 @@ namespace Axivora.Services
 
                 var doctor = new Doctor
                 {
-                    UserId = user.UserId,
-                    LicenseNumber = createDoctorDto.LicenseNumber,
-                    FullName = createDoctorDto.FullName,
-                    Qualification = createDoctorDto.Qualification,
+                    UserId         = user.UserId,
+                    LicenseNumber  = createDoctorDto.LicenseNumber,
+                    FullName       = createDoctorDto.FullName,
+                    Qualification  = createDoctorDto.Qualification,
                     ExperienceYears = createDoctorDto.ExperienceYears,
-                    AddressId = addressId,
-                    IsActive = true,
-                    IsDeleted = false,
-                    CreatedAt = DateTime.UtcNow
+                    AddressId      = addressId,
+                    IsActive       = true,
+                    IsDeleted      = false,
+                    CreatedAt      = DateTime.UtcNow
                 };
                 await _repository.AddDoctorAsync(doctor);
                 await _repository.SaveChangesAsync();
@@ -123,13 +129,20 @@ namespace Axivora.Services
                 {
                     await _repository.AddDoctorDepartmentAsync(new DoctorDepartment
                     {
-                        DoctorId = doctor.DoctorId,
+                        DoctorId     = doctor.DoctorId,
                         DepartmentId = departmentId
                     });
                 }
                 await _repository.SaveChangesAsync();
 
                 await _repository.CommitTransactionAsync();
+
+                // Enqueue welcome email with temporary credentials after successful commit
+                await _emailService.SendDoctorAccountCreatedAsync(
+                    createDoctorDto.Email,
+                    createDoctorDto.FullName,
+                    createDoctorDto.Password);
+
                 return await GetDoctorByIdAsync(doctor.DoctorId);
             }
             catch

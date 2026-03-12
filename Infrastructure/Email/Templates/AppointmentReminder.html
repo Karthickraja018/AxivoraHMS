@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Appointment Reminder</title>
+  <style>
+    body { margin: 0; padding: 0; background-color: #f4f6f9; font-family: Arial, sans-serif; }
+    .wrapper { max-width: 600px; margin: 40px auto; background: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+    .header { background-color: #f57c00; padding: 32px 40px; text-align: center; }
+    .header h1 { margin: 0; color: #ffffff; font-size: 22px; letter-spacing: 0.5px; }
+    .body { padding: 36px 40px; color: #333333; }
+    .body p { font-size: 15px; line-height: 1.7; margin: 0 0 16px; }
+    .detail-card { background: #fff8f0; border-left: 4px solid #f57c00; border-radius: 4px; padding: 20px 24px; margin: 16px 0; }
+    .detail-card .row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #ffe0b2; font-size: 14px; }
+    .detail-card .row:last-child { border-bottom: none; }
+    .detail-card .label { color: #666666; }
+    .detail-card .value { color: #1a1a1a; font-weight: bold; }
+    .footer { background-color: #f4f6f9; padding: 20px 40px; text-align: center; font-size: 12px; color: #999999; }
+  </style>
+</head>
+<body>
+  <div class="wrapper">
+    <div class="header">
+      <h1>&#9200; Appointment Reminder – Tomorrow</h1>
+    </div>
+    <div class="body">
+      <p>Dear <strong>{PatientName}</strong>,</p>
+      <p>This is a friendly reminder that you have an appointment scheduled <strong>tomorrow</strong>. Here are your details:</p>
+      <div class="detail-card">
+        <div class="row">
+          <span class="label">Doctor</span>
+          <span class="value">Dr. {DoctorName}</span>
+        </div>
+        <div class="row">
+          <span class="label">Date &amp; Time</span>
+          <span class="value">{AppointmentTime}</span>
+        </div>
+      </div>
+      <p>Please remember to bring any relevant medical records or test results. Arrive 10 minutes early to complete check-in.</p>
+      <p>If you need to cancel or reschedule, please use the AxivoraHMS portal as soon as possible.</p>
+    </div>
+    <div class="footer">
+      &copy; 2025 AxivoraHMS &middot; All rights reserved
+    </div>
+  </div>
+</body>
+</html>

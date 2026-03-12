@@ -67,6 +67,14 @@ namespace Axivora.Repositories
                 .Include(a => a.Status)
                 .FirstOrDefaultAsync(a => a.AppointmentId == appointmentId);
 
+        public async Task<Appointment?> GetAppointmentWithPatientAndDoctorAsync(int appointmentId) =>
+            await _context.Appointments
+                .AsNoTracking()
+                .Include(a => a.Patient)
+                    .ThenInclude(p => p!.User)
+                .Include(a => a.Doctor)
+                .FirstOrDefaultAsync(a => a.AppointmentId == appointmentId);
+
         public async Task<int> CountByDoctorAsync(int doctorId) =>
             await _context.Consultations
                 .Where(c => c.Appointment != null && c.Appointment.DoctorId == doctorId)

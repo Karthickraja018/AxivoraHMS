@@ -35,6 +35,15 @@ namespace Axivora.Data.Configurations
                    .IsRequired()
                    .HasDefaultValue(false);
 
+            builder.Property(u => u.IsEmailVerified)
+                   .IsRequired()
+                   .HasDefaultValue(false);
+
+            builder.Property(u => u.EmailVerificationOtp)
+                   .HasMaxLength(512);
+
+            builder.Property(u => u.OtpExpiresAt);
+
             builder.Property(u => u.CreatedAt)
                    .IsRequired()
                    .HasDefaultValueSql("SYSDATETIME()");

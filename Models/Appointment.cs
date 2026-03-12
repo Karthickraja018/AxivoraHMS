@@ -33,7 +33,13 @@ namespace Axivora.Models
 
         public DateTime CreatedAt { get; set; }
 
-        /// <summary>Optimistic concurrency token — prevents conflicting concurrent updates.</summary>
+        /// <summary>
+        /// Set to true by <see cref="BackgroundServices.AppointmentReminderService"/> once
+        /// the 24-hour reminder email has been enqueued, preventing duplicate reminders.
+        /// </summary>
+        public bool ReminderSent { get; set; }
+
+        /// <summary>Optimistic concurrency token – prevents conflicting concurrent updates.</summary>
         [Timestamp]
         public byte[] RowVersion { get; set; } = null!;
 

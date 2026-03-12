@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Email Verification</title>
+  <style>
+    body { margin: 0; padding: 0; background-color: #f4f6f9; font-family: Arial, sans-serif; }
+    .wrapper { max-width: 600px; margin: 40px auto; background: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+    .header { background-color: #1a73e8; padding: 32px 40px; text-align: center; }
+    .header h1 { margin: 0; color: #ffffff; font-size: 22px; letter-spacing: 0.5px; }
+    .body { padding: 36px 40px; color: #333333; }
+    .body p { font-size: 15px; line-height: 1.7; margin: 0 0 16px; }
+    .otp-box { display: inline-block; background: #f0f4ff; border: 2px dashed #1a73e8; border-radius: 6px; padding: 16px 36px; font-size: 32px; font-weight: bold; letter-spacing: 8px; color: #1a73e8; margin: 16px 0; }
+    .footer { background-color: #f4f6f9; padding: 20px 40px; text-align: center; font-size: 12px; color: #999999; }
+  </style>
+</head>
+<body>
+  <div class="wrapper">
+    <div class="header">
+      <h1>AxivoraHMS &ndash; Verify Your Email</h1>
+    </div>
+    <div class="body">
+      <p>Thank you for registering with <strong>AxivoraHMS</strong>. Use the one-time password below to verify your email address.</p>
+      <div style="text-align:center;">
+        <span class="otp-box">{OTP}</span>
+      </div>
+      <p>This OTP is valid for <strong>10 minutes</strong>. Do not share it with anyone.</p>
+      <p>If you did not create an account, please ignore this email.</p>
+    </div>
+    <div class="footer">
+      &copy; 2025 AxivoraHMS &middot; All rights reserved
+    </div>
+  </div>
+</body>
+</html>

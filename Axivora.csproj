@@ -23,4 +23,11 @@
     <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.3.1" />
   </ItemGroup>
 
+  <!-- Copy HTML email templates to the output directory so EmailService can load them at runtime -->
+  <ItemGroup>
+    <Content Include="Infrastructure\Email\Templates\*.html">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
 </Project>

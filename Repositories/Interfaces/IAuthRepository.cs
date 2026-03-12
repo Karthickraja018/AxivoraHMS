@@ -7,6 +7,7 @@ namespace Axivora.Repositories.Interfaces
         Task<bool> EmailExistsAsync(string email);
         Task<User?> GetUserByEmailAsync(string email);
         Task<User?> GetUserByIdAsync(int userId);
+        Task SaveOtpAsync(int userId, string hashedOtp, DateTime expiresAt);
         Task<Role?> GetRoleByNameAsync(string roleName);
         Task AddUserAsync(User user);
         Task AddRoleAsync(Role role);

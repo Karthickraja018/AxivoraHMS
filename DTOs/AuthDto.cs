@@ -41,6 +41,24 @@ namespace Axivora.DTOs
         public string Email { get; set; } = null!;
     }
 
+    public class VerifyEmailOtpDto
+    {
+        [Required]
+        [EmailAddress]
+        public string Email { get; set; } = null!;
+
+        [Required]
+        [StringLength(6, MinimumLength = 6, ErrorMessage = "OTP must be exactly 6 digits.")]
+        public string Otp { get; set; } = null!;
+    }
+
+    public class ResendEmailVerificationOtpDto
+    {
+        [Required]
+        [EmailAddress]
+        public string Email { get; set; } = null!;
+    }
+
     public class ResetPasswordDto
     {
         [Required]

@@ -12,6 +12,8 @@ using Axivora.Repositories.Interfaces;
 using Axivora.Mappings;
 using Axivora.Security;
 using Axivora.BackgroundServices;
+using Axivora.Infrastructure.Email;
+using Axivora.Models;
 
 namespace Axivora
 {
@@ -28,6 +30,25 @@ namespace Axivora
             builder.Services.AddDbContext<AxivoraDbContext>(options =>
                 options.UseSqlServer(
                     builder.Configuration.GetConnectionString("DefaultConnection")));
+
+            // ?? Email infrastructure ?????????????????????????????????????????????
+            // Bind EmailSettings from appsettings.json and make available via IOptions<EmailSettings>
+            builder.Services.Configure<EmailSettings>(
+                builder.Configuration.GetSection("EmailSettings"));
+
+            // Singleton queue: one shared ConcurrentQueue<EmailMessage> across the entire app lifetime
+            builder.Services.AddSingleton<IEmailQueue, EmailQueue>();
+
+            // Transient SMTP sender used exclusively by EmailBackgroundService
+            builder.Services.AddTransient<SmtpEmailService>();
+
+            // Scoped email service: renders templates and enqueues messages (no SMTP on request thread)
+            builder.Services.AddScoped<IEmailService, EmailService>();
+
+            // Hosted services: email delivery worker + appointment reminder job
+            builder.Services.AddHostedService<EmailBackgroundService>();
+            builder.Services.AddHostedService<AppointmentReminderService>();
+            // ?? End email infrastructure ?????????????????????????????????????????
 
             // Configure JWT Authentication
             var jwtSettings = builder.Configuration.GetSection("JwtSettings");

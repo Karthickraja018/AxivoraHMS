@@ -14,17 +14,26 @@ namespace Axivora.Services
         private readonly IConfiguration _configuration;
         private readonly ITokenService _tokenService;
         private readonly IPasswordHasher _passwordHasher;
+        private readonly IEmailService _emailService;
+
+        // OTP is valid for 10 minutes
+        private static readonly TimeSpan OtpLifetime = TimeSpan.FromMinutes(10);
+
+        // Minimum gap before a new OTP may be issued (prevents spam)
+        private static readonly TimeSpan ResendCooldown = TimeSpan.FromMinutes(1);
 
         public AuthService(
             IAuthRepository repository,
             IConfiguration configuration,
             ITokenService tokenService,
-            IPasswordHasher passwordHasher)
+            IPasswordHasher passwordHasher,
+            IEmailService emailService)
         {
-            _repository = repository;
+            _repository    = repository;
             _configuration = configuration;
-            _tokenService = tokenService;
+            _tokenService  = tokenService;
             _passwordHasher = passwordHasher;
+            _emailService  = emailService;
         }
 
         public async Task<AuthResponseDto> RegisterAsync(RegisterUserDto registerDto)
@@ -41,12 +50,13 @@ namespace Axivora.Services
             // 3. Create user
             var user = new User
             {
-                Email = registerDto.Email,
-                PasswordHash = _passwordHasher.Hash(registerDto.Password), // Hash password
-                IsActive = true,
-                IsDeleted = false,
-                CreatedAt = DateTime.UtcNow,
-                UpdatedAt = DateTime.UtcNow
+                Email           = registerDto.Email,
+                PasswordHash    = _passwordHasher.Hash(registerDto.Password),
+                IsActive        = true,
+                IsDeleted       = false,
+                IsEmailVerified = false,
+                CreatedAt       = DateTime.UtcNow,
+                UpdatedAt       = DateTime.UtcNow
             };
 
             await _repository.AddUserAsync(user);
@@ -65,11 +75,15 @@ namespace Axivora.Services
             await _repository.AddUserRoleAsync(new UserRole { UserId = user.UserId, RoleId = role.RoleId });
             await _repository.SaveChangesAsync();
 
-            // 5. TODO: Send verification email
-            // await _emailService.SendVerificationEmailAsync(user.Email, verificationCode);
+            // Generate OTP, hash it for storage, then enqueue the email
+            var otp       = GenerateOtp();
+            var expiresAt = DateTime.UtcNow.Add(OtpLifetime);
+            await _repository.SaveOtpAsync(user.UserId, _passwordHasher.Hash(otp), expiresAt);
+            await _repository.SaveChangesAsync();
+            await _emailService.SendEmailVerificationOtpAsync(user.Email, otp);
 
             // 6. Generate JWT token using token service
-            var token = _tokenService.GenerateJwtToken(user.UserId, user.Email, registerDto.Role);
+            var token        = _tokenService.GenerateJwtToken(user.UserId, user.Email, registerDto.Role);
             var refreshToken = await CreateRefreshTokenAsync(user.UserId);
 
             // 7. Check if profile is completed
@@ -79,13 +93,13 @@ namespace Axivora.Services
 
             return new AuthResponseDto
             {
-                UserId = user.UserId,
-                Email = user.Email,
-                Token = token,
-                RefreshToken = refreshToken,
-                TokenExpiresAt = _tokenService.GetJwtExpiryTime(),
-                Role = registerDto.Role,
-                EmailVerified = false, // TODO: implement email verification
+                UserId           = user.UserId,
+                Email            = user.Email,
+                Token            = token,
+                RefreshToken     = refreshToken,
+                TokenExpiresAt   = _tokenService.GetJwtExpiryTime(),
+                Role             = registerDto.Role,
+                EmailVerified    = false,
                 ProfileCompleted = profileCompleted
             };
         }
@@ -107,30 +121,28 @@ namespace Axivora.Services
                 throw new UnauthorizedAccessException("Account is disabled. Please contact support.");
 
             // 4. Get user role
-            var roleName = user.UserRoles.FirstOrDefault()?.Role?.RoleName ?? "Patient";
-
-            // 5. Generate JWT token using token service
-            var token = _tokenService.GenerateJwtToken(user.UserId, user.Email, roleName);
+            var roleName     = user.UserRoles.FirstOrDefault()?.Role?.RoleName ?? "Patient";
+            var token        = _tokenService.GenerateJwtToken(user.UserId, user.Email, roleName);
             var refreshToken = await CreateRefreshTokenAsync(user.UserId);
 
-            // 6. Check if profile is completed
+            // 5. Check if profile is completed
             bool profileCompleted = roleName == "Patient"
                 ? await _repository.PatientProfileExistsAsync(user.UserId)
                 : roleName == "Doctor" && await _repository.DoctorProfileExistsAsync(user.UserId);
 
-            // 7. Update last login (optional)
+            // 6. Update last login (optional)
             user.UpdatedAt = DateTime.UtcNow;
             await _repository.SaveChangesAsync();
 
             return new AuthResponseDto
             {
-                UserId = user.UserId,
-                Email = user.Email,
-                Token = token,
-                RefreshToken = refreshToken,
-                TokenExpiresAt = _tokenService.GetJwtExpiryTime(),
-                Role = roleName,
-                EmailVerified = true, // TODO: implement email verification
+                UserId           = user.UserId,
+                Email            = user.Email,
+                Token            = token,
+                RefreshToken     = refreshToken,
+                TokenExpiresAt   = _tokenService.GetJwtExpiryTime(),
+                Role             = roleName,
+                EmailVerified    = user.IsEmailVerified,
                 ProfileCompleted = profileCompleted
             };
         }
@@ -157,9 +169,8 @@ namespace Axivora.Services
             storedToken.IsRevoked = true;
             storedToken.RevokedAt = DateTime.UtcNow;
 
-            var roleName = user.UserRoles.FirstOrDefault()?.Role?.RoleName ?? "Patient";
-
-            var newJwtToken = _tokenService.GenerateJwtToken(user.UserId, user.Email, roleName);
+            var roleName        = user.UserRoles.FirstOrDefault()?.Role?.RoleName ?? "Patient";
+            var newJwtToken     = _tokenService.GenerateJwtToken(user.UserId, user.Email, roleName);
             var newRefreshToken = await CreateRefreshTokenAsync(user.UserId);
 
             bool profileCompleted = roleName == "Patient"
@@ -170,13 +181,13 @@ namespace Axivora.Services
 
             return new AuthResponseDto
             {
-                UserId = user.UserId,
-                Email = user.Email,
-                Token = newJwtToken,
-                RefreshToken = newRefreshToken,
-                TokenExpiresAt = _tokenService.GetJwtExpiryTime(),
-                Role = roleName,
-                EmailVerified = true, // TODO: implement email verification
+                UserId           = user.UserId,
+                Email            = user.Email,
+                Token            = newJwtToken,
+                RefreshToken     = newRefreshToken,
+                TokenExpiresAt   = _tokenService.GetJwtExpiryTime(),
+                Role             = roleName,
+                EmailVerified    = user.IsEmailVerified,
                 ProfileCompleted = profileCompleted
             };
         }
@@ -198,51 +209,106 @@ namespace Axivora.Services
             return true;
         }
 
-        public async Task<bool> VerifyEmailAsync(string email, string verificationCode)
+        /// <summary>
+        /// Verifies the 6-digit OTP submitted by the user.
+        /// On success, marks the user's email as verified and clears the OTP.
+        /// Throws <see cref="InvalidOperationException"/> when the OTP is wrong or expired.
+        /// </summary>
+        public async Task VerifyEmailOtpAsync(string email, string otp)
         {
-            var user = await _repository.GetUserByEmailAsync(email);
-            if (user == null)
-                throw new KeyNotFoundException("User not found.");
+            var user = await _repository.GetUserByEmailAsync(email)
+                ?? throw new KeyNotFoundException("User not found.");
 
-            // Placeholder implementation
-            return await Task.FromResult(true);
+            if (user.IsEmailVerified)
+                throw new InvalidOperationException("Email is already verified.");
+
+            if (user.EmailVerificationOtp is null || user.OtpExpiresAt is null)
+                throw new InvalidOperationException("No verification OTP found. Please request a new one.");
+
+            if (DateTime.UtcNow > user.OtpExpiresAt)
+                throw new InvalidOperationException("OTP has expired. Please request a new one.");
+
+            if (!_passwordHasher.Verify(otp, user.EmailVerificationOtp))
+                throw new InvalidOperationException("Invalid OTP.");
+
+            // Mark email as verified and clear the OTP fields
+            user.IsEmailVerified      = true;
+            user.EmailVerificationOtp = null;
+            user.OtpExpiresAt         = null;
+            user.UpdatedAt            = DateTime.UtcNow;
+            await _repository.SaveChangesAsync();
+        }
+
+        /// <summary>
+        /// Issues a fresh OTP and re-sends the verification email.
+        /// Enforces a cooldown to prevent abuse: a new OTP cannot be requested
+        /// if the current one was issued less than <see cref="ResendCooldown"/> ago.
+        /// </summary>
+        public async Task ResendEmailVerificationOtpAsync(string email)
+        {
+            var user = await _repository.GetUserByEmailAsync(email)
+                ?? throw new KeyNotFoundException("User not found.");
+
+            if (user.IsEmailVerified)
+                throw new InvalidOperationException("Email is already verified.");
+
+            // Enforce cooldown: OtpExpiresAt was set to UtcNow + 10 min on issue,
+            // so "time remaining > (OtpLifetime - ResendCooldown)" means it was issued too recently.
+            if (user.OtpExpiresAt.HasValue)
+            {
+                var issuedAt      = user.OtpExpiresAt.Value - OtpLifetime;
+                var cooldownEndsAt = issuedAt + ResendCooldown;
+                if (DateTime.UtcNow < cooldownEndsAt)
+                {
+                    var wait = (cooldownEndsAt - DateTime.UtcNow).Seconds;
+                    throw new InvalidOperationException(
+                        $"Please wait {wait} second(s) before requesting a new OTP.");
+                }
+            }
+
+            var otp       = GenerateOtp();
+            var expiresAt = DateTime.UtcNow.Add(OtpLifetime);
+            await _repository.SaveOtpAsync(user.UserId, _passwordHasher.Hash(otp), expiresAt);
+            await _repository.SaveChangesAsync();
+            await _emailService.SendEmailVerificationOtpAsync(email, otp);
         }
 
         public async Task SendPasswordResetTokenAsync(string email)
         {
-            var user = await _repository.GetUserByEmailAsync(email);
-            if (user == null)
-                throw new KeyNotFoundException("User not found.");
+            var user = await _repository.GetUserByEmailAsync(email)
+                ?? throw new KeyNotFoundException("User not found.");
 
             var resetToken = GenerateSecureToken();
-            Console.WriteLine($"Password reset token for {email}: {resetToken}");
+            var baseUrl    = _configuration["AppSettings:BaseUrl"] ?? "https://axivora.health";
+            var resetLink  = $"{baseUrl}/reset-password?token={Uri.EscapeDataString(resetToken)}&email={Uri.EscapeDataString(email)}";
+
+            await _emailService.SendForgotPasswordEmailAsync(email, resetLink);
         }
 
         public async Task<bool> ResetPasswordAsync(string email, string resetToken, string newPassword)
         {
-            var user = await _repository.GetUserByEmailAsync(email);
-            if (user == null)
-                throw new KeyNotFoundException("User not found.");
+            var user = await _repository.GetUserByEmailAsync(email)
+                ?? throw new KeyNotFoundException("User not found.");
 
-            // Update password
             user.PasswordHash = _passwordHasher.Hash(newPassword);
-            user.UpdatedAt = DateTime.UtcNow;
+            user.UpdatedAt    = DateTime.UtcNow;
             await _repository.SaveChangesAsync();
 
             return true;
         }
 
+        // ?? Private helpers ??????????????????????????????????????????????????????
+
         private async Task<string> CreateRefreshTokenAsync(int userId)
         {
             var jwtSettings = _configuration.GetSection("JwtSettings");
-            var expiryDays = int.Parse(jwtSettings["RefreshTokenExpiryDays"] ?? "7");
+            var expiryDays  = int.Parse(jwtSettings["RefreshTokenExpiryDays"] ?? "7");
 
-            var tokenValue = _tokenService.GenerateRefreshToken();
-
+            var tokenValue   = _tokenService.GenerateRefreshToken();
             var refreshToken = new RefreshToken
             {
-                UserId = userId,
-                Token = tokenValue,
+                UserId    = userId,
+                Token     = tokenValue,
                 ExpiresAt = DateTime.UtcNow.AddDays(expiryDays),
                 CreatedAt = DateTime.UtcNow,
                 IsRevoked = false
@@ -250,16 +316,25 @@ namespace Axivora.Services
 
             await _repository.AddRefreshTokenAsync(refreshToken);
             await _repository.SaveChangesAsync();
-
             return tokenValue;
         }
 
         private static string GenerateSecureToken()
         {
-            var randomBytes = new byte[32];
+            var bytes = new byte[32];
             using var rng = RandomNumberGenerator.Create();
-            rng.GetBytes(randomBytes);
-            return Convert.ToBase64String(randomBytes);
+            rng.GetBytes(bytes);
+            return Convert.ToBase64String(bytes);
+        }
+
+        private static string GenerateOtp()
+        {
+            var bytes = new byte[4];
+            using var rng = RandomNumberGenerator.Create();
+            rng.GetBytes(bytes);
+            // Produces a 6-digit number in the range 100000–999999
+            var value = (BitConverter.ToUInt32(bytes, 0) % 900000) + 100000;
+            return value.ToString();
         }
     }
 }

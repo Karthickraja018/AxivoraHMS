@@ -159,6 +159,19 @@ namespace Axivora.Repositories
                 .Include(s => s.AvailabilityDay)
                 .FirstOrDefaultAsync(s => s.Id == slotId);
 
+        public async Task<Patient?> GetPatientWithUserAsync(int patientId) =>
+            await _context.Patients
+                .AsNoTracking()
+                .Include(p => p.User)
+                .FirstOrDefaultAsync(p => p.PatientId == patientId && !p.IsDeleted);
+
+        public async Task<string?> GetDoctorFullNameAsync(int doctorId) =>
+            await _context.Doctors
+                .AsNoTracking()
+                .Where(d => d.DoctorId == doctorId && !d.IsDeleted)
+                .Select(d => d.FullName)
+                .FirstOrDefaultAsync();
+
         public async Task AddAsync(Appointment appointment) =>
             await _context.Appointments.AddAsync(appointment);
 

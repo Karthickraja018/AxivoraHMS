@@ -26,6 +26,15 @@ namespace Axivora.Repositories
         public async Task<User?> GetUserByIdAsync(int userId) =>
             await _context.Users.FindAsync(userId);
 
+        public async Task SaveOtpAsync(int userId, string hashedOtp, DateTime expiresAt)
+        {
+            var user = await _context.Users.FindAsync(userId);
+            if (user is null) return;
+            user.EmailVerificationOtp = hashedOtp;
+            user.OtpExpiresAt         = expiresAt;
+            user.UpdatedAt            = DateTime.UtcNow;
+        }
+
         public async Task<Role?> GetRoleByNameAsync(string roleName) =>
             await _context.Roles.FirstOrDefaultAsync(r => r.RoleName == roleName);
 

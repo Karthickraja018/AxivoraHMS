@@ -23,6 +23,8 @@ namespace Axivora.Repositories.Interfaces
         Task<int> CountByDoctorAsync(int doctorId, DateTime? date);
         Task<IEnumerable<Appointment>> GetPagedByDoctorAsync(int doctorId, DateTime? date, int skip, int take);
         Task<AppointmentSlot?> GetSlotByIdAsync(int slotId);
+        Task<Patient?> GetPatientWithUserAsync(int patientId);
+        Task<string?> GetDoctorFullNameAsync(int doctorId);
         Task AddAsync(Appointment appointment);
         Task AddAuditLogAsync(AuditLog auditLog);
         Task SaveChangesAsync();

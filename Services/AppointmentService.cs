@@ -13,15 +13,18 @@ namespace Axivora.Services
         private readonly IAppointmentRepository _repository;
         private readonly IMapper _mapper;
         private readonly ILogger<AppointmentService> _logger;
+        private readonly IEmailService _emailService;
 
         public AppointmentService(
             IAppointmentRepository repository,
             IMapper mapper,
-            ILogger<AppointmentService> logger)
+            ILogger<AppointmentService> logger,
+            IEmailService emailService)
         {
-            _repository = repository;
-            _mapper     = mapper;
-            _logger     = logger;
+            _repository   = repository;
+            _mapper       = mapper;
+            _logger       = logger;
+            _emailService = emailService;
         }
 
         // ?? Read ??????????????????????????????????????????????????????????????
@@ -218,14 +221,12 @@ namespace Axivora.Services
             var patient = await _repository.GetPatientByUserIdAsync(callerUserId)
                 ?? throw new KeyNotFoundException("Patient profile not found. Please complete your profile first.");
 
-            // Resolve the "Scheduled" status before opening the transaction to minimise its duration
             var status = await _repository.GetStatusByNameAsync("Scheduled")
                 ?? throw new InvalidOperationException("Appointment status 'Scheduled' is not configured.");
 
             await _repository.BeginTransactionAsync();
             try
             {
-                // FIX 1: Fetch and validate the slot INSIDE the transaction
                 var slot = await _repository.GetSlotByIdAsync(dto.SlotId)
                     ?? throw new KeyNotFoundException($"Slot with ID {dto.SlotId} not found.");
 
@@ -233,7 +234,6 @@ namespace Axivora.Services
                     throw new InvalidOperationException(
                         $"Slot {dto.SlotId} is not available for booking (current status: {slot.Status}).");
 
-                // Mark the slot booked atomically before creating the appointment
                 slot.Status = SlotStatus.Booked;
 
                 var appointment = new Appointment
@@ -251,8 +251,6 @@ namespace Axivora.Services
 
                 await _repository.AddAsync(appointment);
 
-                // FIX 2: SaveChanges here will throw DbUpdateConcurrencyException if another
-                // transaction already modified the slot's RowVersion since we read it
                 try
                 {
                     await _repository.SaveChangesAsync();
@@ -263,15 +261,26 @@ namespace Axivora.Services
                         "Slot was already booked by another user. Please choose a different slot.");
                 }
 
-                // Link the appointment back to the slot now that the appointment ID is known
                 slot.AppointmentId = appointment.AppointmentId;
                 await _repository.SaveChangesAsync();
 
                 await _repository.CommitTransactionAsync();
 
                 _logger.LogInformation(
-                    "Patient {PatientId} booked slot {SlotId} ? appointment {AppointmentId}.",
+                    "Patient {PatientId} booked slot {SlotId} -> appointment {AppointmentId}.",
                     patient.PatientId, slot.Id, appointment.AppointmentId);
+
+                // Enqueue confirmation email after successful booking
+                var patientWithUser = await _repository.GetPatientWithUserAsync(patient.PatientId);
+                var doctorName      = await _repository.GetDoctorFullNameAsync(slot.DoctorId);
+                if (patientWithUser?.User?.Email is string patientEmail)
+                {
+                    await _emailService.SendAppointmentConfirmationAsync(
+                        patientEmail,
+                        patientWithUser.FullName,
+                        doctorName ?? "Doctor",
+                        appointment.AppointmentStart);
+                }
 
                 return await GetAppointmentByIdAsync(appointment.AppointmentId);
             }

@@ -11,11 +11,16 @@ namespace Axivora.Services
     {
         private readonly IConsultationRepository _repository;
         private readonly IMapper _mapper;
+        private readonly IEmailService _emailService;
 
-        public ConsultationService(IConsultationRepository repository, IMapper mapper)
+        public ConsultationService(
+            IConsultationRepository repository,
+            IMapper mapper,
+            IEmailService emailService)
         {
-            _repository = repository;
-            _mapper = mapper;
+            _repository   = repository;
+            _mapper       = mapper;
+            _emailService = emailService;
         }
 
         public async Task<IEnumerable<ConsultationDto>> GetAllConsultationsAsync()
@@ -91,6 +96,9 @@ namespace Axivora.Services
             await _repository.AddConsultationAsync(consultation);
             await _repository.SaveChangesAsync();
 
+            // Enqueue completion email if the appointment status is Completed
+            await EnqueueCompletionEmailIfApplicableAsync(createConsultationDto.AppointmentId, appointment);
+
             return await GetConsultationByIdAsync(consultation.ConsultationId);
         }
 
@@ -114,7 +122,12 @@ namespace Axivora.Services
 
                 ValidateAppointmentStatusForConsultation(appointment);
 
-                return await CreateConsultationSkippingAppointmentLookupAsync(createConsultationDto);
+                var result = await CreateConsultationSkippingAppointmentLookupAsync(createConsultationDto);
+
+                // Enqueue completion email if the appointment status is Completed
+                await EnqueueCompletionEmailIfApplicableAsync(createConsultationDto.AppointmentId, appointment);
+
+                return result;
             }
 
             return await CreateConsultationAsync(createConsultationDto);
@@ -215,6 +228,27 @@ namespace Axivora.Services
                 totalCount,
                 paginationParams.PageNumber,
                 paginationParams.PageSize);
+        }
+
+        /// <summary>
+        /// Enqueues an AppointmentCompleted email to the patient when a consultation
+        /// is created for an appointment that is in a Completed-equivalent status.
+        /// </summary>
+        private async Task EnqueueCompletionEmailIfApplicableAsync(int appointmentId, Appointment appointment)
+        {
+            var statusName = appointment.Status?.StatusName ?? string.Empty;
+            if (!string.Equals(statusName, "Completed", StringComparison.OrdinalIgnoreCase))
+                return;
+
+            var full = await _repository.GetAppointmentWithPatientAndDoctorAsync(appointmentId);
+            if (full?.Patient?.User?.Email is not string patientEmail)
+                return;
+
+            await _emailService.SendAppointmentCompletedAsync(
+                patientEmail,
+                full.Patient.FullName,
+                full.Doctor?.FullName ?? "Doctor",
+                full.AppointmentStart);
         }
     }
 }

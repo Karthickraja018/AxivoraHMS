@@ -8,7 +8,8 @@ namespace Axivora.Services.Interfaces
         Task<AuthResponseDto> LoginAsync(LoginDto loginDto);
         Task<AuthResponseDto> RefreshTokenAsync(string refreshToken);
         Task<bool> RevokeTokenAsync(string refreshToken, int callerUserId);
-        Task<bool> VerifyEmailAsync(string email, string verificationCode);
+        Task VerifyEmailOtpAsync(string email, string otp);
+        Task ResendEmailVerificationOtpAsync(string email);
         Task SendPasswordResetTokenAsync(string email);
         Task<bool> ResetPasswordAsync(string email, string resetToken, string newPassword);
     }

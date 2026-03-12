@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Doctor Account Created</title>
+  <style>
+    body { margin: 0; padding: 0; background-color: #f4f6f9; font-family: Arial, sans-serif; }
+    .wrapper { max-width: 600px; margin: 40px auto; background: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+    .header { background-color: #2e7d32; padding: 32px 40px; text-align: center; }
+    .header h1 { margin: 0; color: #ffffff; font-size: 22px; letter-spacing: 0.5px; }
+    .body { padding: 36px 40px; color: #333333; }
+    .body p { font-size: 15px; line-height: 1.7; margin: 0 0 16px; }
+    .credentials { background: #f1f8e9; border-left: 4px solid #2e7d32; border-radius: 4px; padding: 16px 20px; margin: 16px 0; font-size: 14px; }
+    .credentials span { display: block; margin-bottom: 8px; }
+    .credentials strong { color: #2e7d32; }
+    .warning { font-size: 13px; color: #e65100; font-style: italic; }
+    .footer { background-color: #f4f6f9; padding: 20px 40px; text-align: center; font-size: 12px; color: #999999; }
+  </style>
+</head>
+<body>
+  <div class="wrapper">
+    <div class="header">
+      <h1>Welcome to AxivoraHMS, Dr. {DoctorName}</h1>
+    </div>
+    <div class="body">
+      <p>Your doctor account has been created by the system administrator. You can now log in to the AxivoraHMS portal using the temporary credentials below.</p>
+      <div class="credentials">
+        <span><strong>Email:</strong> {Email}</span>
+        <span><strong>Temporary Password:</strong> {TempPassword}</span>
+      </div>
+      <p class="warning">&#9888; Please log in and change your password immediately. Your temporary password will expire after first use.</p>
+      <p>If you have any questions, please contact the system administrator.</p>
+    </div>
+    <div class="footer">
+      &copy; 2025 AxivoraHMS &middot; All rights reserved
+    </div>
+  </div>
+</body>
+</html>

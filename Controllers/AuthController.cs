@@ -162,5 +162,63 @@ namespace Axivora.Controllers
                 return Forbid();
             }
         }
+
+        /// <summary>
+        /// Verify email address using the 6-digit OTP sent on registration.
+        /// Accepts the email and OTP as query parameters.
+        /// Example: POST /api/auth/verify-email?email=user@example.com&amp;code=123456
+        /// </summary>
+        [HttpPost("verify-email")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        public async Task<IActionResult> VerifyEmail(
+            [FromQuery] string email,
+            [FromQuery] string code)
+        {
+            if (string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(code))
+                return BadRequest(new { message = "email and code query parameters are required." });
+
+            try
+            {
+                await _authService.VerifyEmailOtpAsync(email, code);
+                return Ok(new { message = "Email verified successfully." });
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return NotFound(new { message = ex.Message });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+        }
+
+        /// <summary>
+        /// Resend the email verification OTP (minimum 1-minute cooldown between requests)
+        /// </summary>
+        [HttpPost("resend-verification-otp")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        public async Task<IActionResult> ResendVerificationOtp([FromBody] ResendEmailVerificationOtpDto dto)
+        {
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
+
+            try
+            {
+                await _authService.ResendEmailVerificationOtpAsync(dto.Email);
+                return Ok(new { message = "Verification OTP sent. Please check your email." });
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return NotFound(new { message = ex.Message });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+        }
     }
 }

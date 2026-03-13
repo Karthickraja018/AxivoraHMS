@@ -1,7 +1,7 @@
 using Axivora.Infrastructure.Email;
 using Axivora.Services.Interfaces;
 
-namespace Axivora.BackgroundServices
+namespace Axivora.Services.BackgroundServices
 {
     /// <summary>
     /// Long-running hosted service that drains the <see cref="IEmailQueue"/> and

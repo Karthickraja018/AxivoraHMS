@@ -34,7 +34,7 @@ namespace Axivora.Models
         public DateTime CreatedAt { get; set; }
 
         /// <summary>
-        /// Set to true by <see cref="BackgroundServices.AppointmentReminderService"/> once
+        /// Set to true by <see cref="Services.BackgroundServices.AppointmentReminderService"/> once
         /// the 24-hour reminder email has been enqueued, preventing duplicate reminders.
         /// </summary>
         public bool ReminderSent { get; set; }

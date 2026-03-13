@@ -1,6 +1,6 @@
 using Axivora.Services.Interfaces;
 
-namespace Axivora.BackgroundServices
+namespace Axivora.Services.BackgroundServices
 {
     /// <summary>
     /// Runs daily at midnight UTC to generate <see cref="Models.DoctorAvailabilityDay"/>

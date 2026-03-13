@@ -2,7 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Axivora.Data;
 using Axivora.Services.Interfaces;
 
-namespace Axivora.BackgroundServices
+namespace Axivora.Services.BackgroundServices
 {
     /// <summary>
     /// Runs every hour and enqueues a reminder email for every appointment that:

@@ -9,7 +9,7 @@ namespace Axivora.Infrastructure.Email
     /// on the <see cref="IEmailQueue"/>.
     ///
     /// No SMTP I/O occurs on the calling thread; the
-    /// <see cref="Axivora.BackgroundServices.EmailBackgroundService"/> drains the queue
+    /// <see cref="Services.BackgroundServices.EmailBackgroundService"/> drains the queue
     /// and delivers messages via <see cref="SmtpEmailService"/>.
     /// </summary>
     public class EmailService : IEmailService
@@ -27,7 +27,7 @@ namespace Axivora.Infrastructure.Email
             _templateDirectory = Path.Combine(AppContext.BaseDirectory, "Infrastructure", "Email", "Templates");
         }
 
-        // ?? IEmailService ????????????????????????????????????????????????????????
+        // IEmailService
 
         public Task SendEmailVerificationOtpAsync(string email, string otp)
         {
@@ -94,7 +94,7 @@ namespace Axivora.Infrastructure.Email
             return Task.CompletedTask;
         }
 
-        // ?? Private helpers ??????????????????????????????????????????????????????
+        // Private helpers
 
         private void Enqueue(string to, string subject, string body)
         {

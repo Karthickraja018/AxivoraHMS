@@ -7,7 +7,7 @@ namespace Axivora.Infrastructure.Email
 {
     /// <summary>
     /// Low-level SMTP sender. Provides a single <see cref="SendAsync"/> method used
-    /// exclusively by <see cref="Axivora.BackgroundServices.EmailBackgroundService"/>
+    /// exclusively by <see cref="Services.BackgroundServices.EmailBackgroundService"/>
     /// to deliver pre-composed email messages from the queue.
     /// </summary>
     public class SmtpEmailService

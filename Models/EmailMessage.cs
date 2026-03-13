@@ -2,7 +2,7 @@ namespace Axivora.Models
 {
     /// <summary>
     /// Represents a single email message that is placed on the in-memory queue
-    /// and later processed by <see cref="BackgroundServices.EmailBackgroundService"/>.
+    /// and later processed by <see cref="Services.BackgroundServices.EmailBackgroundService"/>.
     /// </summary>
     public class EmailMessage
     {

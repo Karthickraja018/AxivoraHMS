@@ -86,7 +86,7 @@ namespace Axivora
             builder.Services.AddScoped<IAuthorizationHandler, OwnershipAuthorizationHandler>();
 
             // Register AutoMapper
-            builder.Services.AddAutoMapper(typeof(MappingProfile));
+            builder.Services.AddAutoMapper(cfg => { }, typeof(MappingProfile).Assembly);
 
             // Register Application Services
             builder.Services.AddScoped<IAuthService, AuthService>();

@@ -12,8 +12,8 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Axivora.Migrations
 {
     [DbContext(typeof(AxivoraDbContext))]
-    [Migration("20260312083535_AddEmailVerificationToUser")]
-    partial class AddEmailVerificationToUser
+    [Migration("20260325171204_InitialCreate")]
+    partial class InitialCreate
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -380,6 +380,15 @@ namespace Axivora.Migrations
                         .IsRequired()
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(true);
 
                     b.HasKey("DepartmentId");
 
@@ -887,13 +896,18 @@ namespace Axivora.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("VitalId"));
 
-                    b.Property<int>("ConsultationId")
+                    b.Property<string>("BloodPressure")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<int?>("HeartRate")
                         .HasColumnType("int");
 
-                    b.Property<int?>("DiastolicBP")
-                        .HasColumnType("int");
+                    b.Property<decimal?>("Height")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("decimal(5,2)");
 
-                    b.Property<int?>("HeartRate_BPM")
+                    b.Property<int>("PatientId")
                         .HasColumnType("int");
 
                     b.Property<DateTime>("RecordedAt")
@@ -901,24 +915,18 @@ namespace Axivora.Migrations
                         .HasColumnType("datetime2")
                         .HasDefaultValueSql("SYSDATETIME()");
 
-                    b.Property<int?>("SpO2_Percentage")
-                        .HasColumnType("int");
-
-                    b.Property<int?>("SystolicBP")
-                        .HasColumnType("int");
-
-                    b.Property<decimal?>("Temperature_C")
+                    b.Property<decimal?>("Temperature")
                         .HasPrecision(4, 2)
                         .HasColumnType("decimal(4,2)");
 
-                    b.Property<decimal?>("Weight_KG")
+                    b.Property<decimal?>("Weight")
                         .HasPrecision(5, 2)
                         .HasColumnType("decimal(5,2)");
 
                     b.HasKey("VitalId");
 
-                    b.HasIndex("ConsultationId")
-                        .HasDatabaseName("IX_PatientVitals_ConsultationId");
+                    b.HasIndex("PatientId", "RecordedAt")
+                        .HasDatabaseName("IX_PatientVitals_PatientId_RecordedAt");
 
                     b.ToTable("PatientVitals", (string)null);
                 });
@@ -1364,13 +1372,13 @@ namespace Axivora.Migrations
 
             modelBuilder.Entity("Axivora.Models.PatientVital", b =>
                 {
-                    b.HasOne("Axivora.Models.Consultation", "Consultation")
+                    b.HasOne("Axivora.Models.Patient", "Patient")
                         .WithMany("PatientVitals")
-                        .HasForeignKey("ConsultationId")
+                        .HasForeignKey("PatientId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.Navigation("Consultation");
+                    b.Navigation("Patient");
                 });
 
             modelBuilder.Entity("Axivora.Models.Prescription", b =>
@@ -1464,8 +1472,6 @@ namespace Axivora.Migrations
                 {
                     b.Navigation("OrderedTests");
 
-                    b.Navigation("PatientVitals");
-
                     b.Navigation("Prescriptions");
 
                     b.Navigation("SessionFeedback");
@@ -1519,6 +1525,8 @@ namespace Axivora.Migrations
                     b.Navigation("Appointments");
 
                     b.Navigation("PatientAllergies");
+
+                    b.Navigation("PatientVitals");
                 });
 
             modelBuilder.Entity("Axivora.Models.Role", b =>

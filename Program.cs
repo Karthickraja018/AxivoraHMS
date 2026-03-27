@@ -147,6 +147,9 @@ namespace Axivora
                 options.IncludeXmlComments(xmlPath, includeControllerXmlComments: true);
             });
 
+            // Add CORS service
+            builder.Services.AddCors();
+
             var app = builder.Build();
 
             // Configure the HTTP request pipeline.
@@ -161,6 +164,12 @@ namespace Axivora
             }
 
             app.UseHttpsRedirection();
+
+            // Add CORS middleware
+            app.UseCors(policy =>
+                policy.AllowAnyOrigin()
+                      .AllowAnyHeader()
+                      .AllowAnyMethod());
 
             app.UseAuthentication();
             app.UseAuthorization();

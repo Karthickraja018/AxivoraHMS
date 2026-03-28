@@ -17,7 +17,7 @@ namespace Axivora.Repositories
         }
 
         /// <summary>
-        /// Read-only base query — AsNoTracking improves performance for all list/count
+        /// Read-only base query ï¿½ AsNoTracking improves performance for all list/count
         /// queries that never modify the returned entities.
         /// </summary>
         private IQueryable<Appointment> BaseQuery() =>
@@ -27,6 +27,28 @@ namespace Axivora.Repositories
                 .Include(a => a.Doctor)
                 .Include(a => a.Status)
                 .Where(a => !a.IsDeleted);
+
+        /// <summary>
+        /// Doctor filter without navigation includes ï¿½ keeps COUNT and ORDER BY + SKIP/TAKE on a narrow rowset
+        /// (soft-delete is already applied via global query filter on <see cref="Appointment"/>).
+        /// </summary>
+        private IQueryable<Appointment> DoctorAppointmentsCore(int doctorId, DateTime? date)
+        {
+            var q = _context.Appointments.AsNoTracking().Where(a => a.DoctorId == doctorId);
+            if (date.HasValue)
+            {
+                var dayStart = date.Value.Date;
+                var dayEnd = dayStart.AddDays(1);
+                q = q.Where(a => a.AppointmentStart >= dayStart && a.AppointmentStart < dayEnd);
+            }
+            return q;
+        }
+
+        /// <summary>
+        /// Patient filter without includes (status filter adds a single join when needed).
+        /// </summary>
+        private IQueryable<Appointment> PatientAppointmentsCore(int patientId) =>
+            _context.Appointments.AsNoTracking().Where(a => a.PatientId == patientId);
 
         public async Task<IEnumerable<Appointment>> GetAllAsync() =>
             await BaseQuery().ToListAsync();
@@ -42,7 +64,7 @@ namespace Axivora.Repositories
 
         /// <summary>
         /// Fetches a tracked appointment so the service layer can mutate and save it.
-        /// Tracking is intentionally kept here — do NOT add AsNoTracking.
+        /// Tracking is intentionally kept here ï¿½ do NOT add AsNoTracking.
         /// </summary>
         public async Task<Appointment?> GetByIdAsync(int appointmentId) =>
             await _context.Appointments
@@ -106,7 +128,7 @@ namespace Axivora.Repositories
 
         public async Task<int> CountByPatientAsync(int patientId, string? status)
         {
-            var query = BaseQuery().Where(a => a.PatientId == patientId);
+            var query = PatientAppointmentsCore(patientId);
             if (!string.IsNullOrWhiteSpace(status) && !status.Equals("all", StringComparison.OrdinalIgnoreCase))
                 query = query.Where(a => a.Status != null && a.Status.StatusName == status);
             return await query.CountAsync();
@@ -114,45 +136,35 @@ namespace Axivora.Repositories
 
         public async Task<IEnumerable<Appointment>> GetPagedByPatientAsync(int patientId, string? status, int skip, int take)
         {
-            var query = BaseQuery().Where(a => a.PatientId == patientId);
+            var query = PatientAppointmentsCore(patientId);
             if (!string.IsNullOrWhiteSpace(status) && !status.Equals("all", StringComparison.OrdinalIgnoreCase))
                 query = query.Where(a => a.Status != null && a.Status.StatusName == status);
             return await query
+                .Include(a => a.Patient)
+                .Include(a => a.Doctor)
+                .Include(a => a.Status)
                 .OrderByDescending(a => a.AppointmentStart)
                 .Skip(skip).Take(take)
+                .AsSplitQuery()
                 .ToListAsync();
         }
 
-        public async Task<int> CountByDoctorAsync(int doctorId, DateTime? date)
-        {
-            var query = BaseQuery().Where(a => a.DoctorId == doctorId);
-            if (date.HasValue)
-            {
-                var dayStart = date.Value.Date;
-                var dayEnd   = dayStart.AddDays(1);
-                query = query.Where(a => a.AppointmentStart >= dayStart && a.AppointmentStart < dayEnd);
-            }
-            return await query.CountAsync();
-        }
+        public async Task<int> CountByDoctorAsync(int doctorId, DateTime? date) =>
+            await DoctorAppointmentsCore(doctorId, date).CountAsync();
 
-        public async Task<IEnumerable<Appointment>> GetPagedByDoctorAsync(int doctorId, DateTime? date, int skip, int take)
-        {
-            var query = BaseQuery().Where(a => a.DoctorId == doctorId);
-            if (date.HasValue)
-            {
-                var dayStart = date.Value.Date;
-                var dayEnd   = dayStart.AddDays(1);
-                query = query.Where(a => a.AppointmentStart >= dayStart && a.AppointmentStart < dayEnd);
-            }
-            return await query
+        public async Task<IEnumerable<Appointment>> GetPagedByDoctorAsync(int doctorId, DateTime? date, int skip, int take) =>
+            await DoctorAppointmentsCore(doctorId, date)
+                .Include(a => a.Patient)
+                .Include(a => a.Doctor)
+                .Include(a => a.Status)
                 .OrderBy(a => a.AppointmentStart)
                 .Skip(skip).Take(take)
+                .AsSplitQuery()
                 .ToListAsync();
-        }
 
         /// <summary>
         /// Fetches a tracked slot so the service layer can update its status and save it.
-        /// Tracking is intentionally kept here — do NOT add AsNoTracking.
+        /// Tracking is intentionally kept here ï¿½ do NOT add AsNoTracking.
         /// </summary>
         public async Task<AppointmentSlot?> GetSlotByIdAsync(int slotId) =>
             await _context.AppointmentSlots

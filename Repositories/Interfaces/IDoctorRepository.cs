@@ -8,6 +8,7 @@ namespace Axivora.Repositories.Interfaces
         Task<int> CountAsync();
         Task<IEnumerable<Doctor>> GetPagedAsync(int skip, int take);
         Task<Doctor?> GetByIdAsync(int doctorId);
+        Task<Doctor?> GetByUserIdAsync(int userId);
         Task<IEnumerable<Doctor>> GetByDepartmentAsync(int departmentId);
         Task<bool> EmailExistsAsync(string email);
         Task<bool> LicenseNumberExistsAsync(string licenseNumber);

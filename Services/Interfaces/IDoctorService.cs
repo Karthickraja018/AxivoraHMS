@@ -9,6 +9,9 @@ namespace Axivora.Services.Interfaces
         Task<IEnumerable<DoctorDto>> GetAllDoctorsAsync();
         Task<PaginationResponse<DoctorDto>> GetAllDoctorsAsync(PaginationParams paginationParams);
         Task<DoctorDto> GetDoctorByIdAsync(int doctorId);
+        Task<DoctorDto?> GetDoctorByUserIdAsync(int userId);
+        Task InviteDoctorAsync(InviteDoctorDto dto);
+        Task<DoctorDto> CompleteDoctorProfileAsync(int userId, CompleteDoctorProfileDto dto);
         Task<DoctorDto> CreateDoctorAsync(CreateDoctorDto createDoctorDto);
         Task<DoctorDto> UpdateDoctorAsync(int doctorId, UpdateDoctorDto updateDoctorDto);
         Task<bool> DeleteDoctorAsync(int doctorId);

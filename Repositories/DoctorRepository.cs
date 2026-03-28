@@ -39,6 +39,10 @@ namespace Axivora.Repositories
             await BaseQuery()
                 .FirstOrDefaultAsync(d => d.DoctorId == doctorId);
 
+        public async Task<Doctor?> GetByUserIdAsync(int userId) =>
+            await BaseQuery()
+                .FirstOrDefaultAsync(d => d.UserId == userId);
+
         public async Task<IEnumerable<Doctor>> GetByDepartmentAsync(int departmentId) =>
             await BaseQuery()
                 .Where(d => d.IsActive && d.DoctorDepartments.Any(dd => dd.DepartmentId == departmentId))

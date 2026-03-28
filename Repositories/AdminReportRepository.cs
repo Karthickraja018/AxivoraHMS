@@ -57,6 +57,8 @@ namespace Axivora.Repositories
         {
             IQueryable<AppointmentReportView> query = _context.AppointmentReports;
 
+            // Ensure the AppointmentReports view in SQL filters out deleted appointments (a.IsDeleted = 0)
+
             if (filter.From.HasValue)
                 query = query.Where(r => r.AppointmentStart >= filter.From.Value);
 

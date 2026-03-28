@@ -1,4 +1,4 @@
 <Solution>
-  <Project Path="../Axivora.Tests/Axivora.Tests.csproj" Id="2c8eeb19-ae80-431a-9617-d58d4fdec412" />
+  <Project Path="../../../csharp/Axivora.Tests/Axivora.Tests.csproj" />
   <Project Path="Axivora.csproj" />
 </Solution>

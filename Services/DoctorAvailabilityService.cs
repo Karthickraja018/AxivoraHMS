@@ -71,7 +71,7 @@ namespace Axivora.Services
         /// Generates <see cref="DoctorAvailabilityDay"/> records for the next
         /// <paramref name="daysAhead"/> days based on all active templates.
         ///
-        /// Slot generation is deliberately omitted here — slots are created lazily the first
+        /// Slot generation is deliberately omitted here â€” slots are created lazily the first
         /// time a caller requests them via <see cref="ISlotService.EnsureSlotsGeneratedAsync"/>.
         /// This avoids the performance cost of generating slots for every doctor nightly.
         /// </summary>
@@ -81,47 +81,65 @@ namespace Axivora.Services
             var endDate   = today.AddDays(daysAhead);
             var templates = await _templateRepository.GetActiveTemplatesAsync();
 
-            foreach (var template in templates)
+            // Group templates by doctor to manage existence checks in batches
+            var templatesByDoctor = templates.GroupBy(t => t.DoctorId);
+
+            foreach (var doctorGroup in templatesByDoctor)
             {
-                for (var date = today; date <= endDate; date = date.AddDays(1))
+                var doctorId = doctorGroup.Key;
+                // Pre-fetch existing days for this doctor in the target range to avoid N+1 queries in the loop
+                var existingDays = (await _dayRepository.GetByDoctorIdAsync(doctorId))
+                    .Where(d => d.Date >= today && d.Date <= endDate)
+                    .Select(d => d.Date)
+                    .ToHashSet();
+
+                foreach (var template in doctorGroup)
                 {
-                    if ((int)date.DayOfWeek != template.DayOfWeek)
-                        continue;
-
-                    if (date < template.EffectiveFromDate)
-                        continue;
-
-                    if (template.EffectiveToDate.HasValue && date > template.EffectiveToDate.Value)
-                        continue;
-
-                    // Idempotent — skip if a day record already exists
-                    if (await _dayRepository.ExistsAsync(template.DoctorId, date))
-                        continue;
-
-                    var day = new DoctorAvailabilityDay
+                    for (var date = today; date <= endDate; date = date.AddDays(1))
                     {
-                        DoctorId            = template.DoctorId,
-                        Date                = date,
-                        StartTime           = template.StartTime,
-                        EndTime             = template.EndTime,
-                        SlotDurationMinutes = template.SlotDurationMinutes,
-                        Status              = AvailabilityDayStatus.Open,
-                        SourceTemplateId    = template.Id,
-                        CreatedAt           = DateTime.UtcNow
-                    };
+                        if ((int)date.DayOfWeek != template.DayOfWeek)
+                            continue;
 
-                    await _dayRepository.AddAsync(day);
-                    await _dayRepository.SaveChangesAsync();
+                        if (date < template.EffectiveFromDate)
+                            continue;
 
-                    // Slots are generated lazily on first access — no eager generation here
-                    _logger.LogDebug(
-                        "Created availability day {Date} for doctor {DoctorId} from template {TemplateId}.",
-                        date, template.DoctorId, template.Id);
+                        if (template.EffectiveToDate.HasValue && date > template.EffectiveToDate.Value)
+                            continue;
+
+                        // Check in-memory HashSet instead of database roundtrip
+                        if (existingDays.Contains(date))
+                            continue;
+
+                        var day = new DoctorAvailabilityDay
+                        {
+                            DoctorId            = doctorId,
+                            Date                = date,
+                            StartTime           = template.StartTime,
+                            EndTime             = template.EndTime,
+                            SlotDurationMinutes = template.SlotDurationMinutes,
+                            Status              = AvailabilityDayStatus.Open,
+                            SourceTemplateId    = template.Id,
+                            CreatedAt           = DateTime.UtcNow
+                        };
+
+                        await _dayRepository.AddAsync(day);
+                        
+                        // Prevent duplicate adds if multiple templates exist for the same day (should be validated at creation, but safe here)
+                        existingDays.Add(date); 
+
+                        _logger.LogDebug(
+                            "Queued availability day {Date} for doctor {DoctorId} from template {TemplateId}.",
+                            date, doctorId, template.Id);
+                    }
                 }
             }
 
+            // Sync all changes in a single transaction
+            await _dayRepository.SaveChangesAsync();
+
             _logger.LogInformation(
-                "Availability day generation complete for window {Today} – {End}.", today, endDate);
+                "Availability day generation complete for window {Today} â€“ {End}.", today, endDate);
         }
     }
 }
+

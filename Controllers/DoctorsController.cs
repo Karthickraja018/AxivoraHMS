@@ -122,6 +122,35 @@ namespace Axivora.Controllers
         }
 
         /// <summary>
+        /// Doctor-only: update the signed-in clinician profile (self-service).
+        /// </summary>
+        [HttpPut("me")]
+        [Authorize(Roles = "Doctor")]
+        [ProducesResponseType(typeof(DoctorDto), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        public async Task<ActionResult<DoctorDto>> UpdateMyDoctorProfile([FromBody] UpdateMyDoctorProfileDto dto)
+        {
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
+
+            var userId = int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+            try
+            {
+                var doctor = await _doctorService.UpdateMyDoctorProfileAsync(userId, dto);
+                return Ok(doctor);
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return NotFound(new { message = ex.Message });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+        }
+
+        /// <summary>
         /// Create new doctor (Admin only) — legacy: user + full profile in one step
         /// </summary>
         [HttpPost]

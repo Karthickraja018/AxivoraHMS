@@ -105,4 +105,27 @@ namespace Axivora.DTOs
 
         public bool IsActive { get; set; }
     }
+
+    /// <summary>
+    /// Doctor self-service: edit their own clinician profile after setup.
+    /// Allows updating clinician fields + departments + address.
+    /// </summary>
+    public class UpdateMyDoctorProfileDto
+    {
+        [StringLength(100)]
+        public string? LicenseNumber { get; set; }
+
+        [StringLength(150)]
+        public string? FullName { get; set; }
+
+        [StringLength(150)]
+        public string? Qualification { get; set; }
+
+        [Range(0, 100)]
+        public int? ExperienceYears { get; set; }
+
+        public CreateAddressDto? Address { get; set; }
+
+        public List<int>? DepartmentIds { get; set; }
+    }
 }

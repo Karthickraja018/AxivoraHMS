@@ -167,6 +167,81 @@ namespace Axivora.Services
         }
 
         /// <summary>
+        /// Doctor self-service update for their own clinician profile.
+        /// Updates clinician fields, optional address, and optional department assignments.
+        /// </summary>
+        public async Task<DoctorDto> UpdateMyDoctorProfileAsync(int userId, UpdateMyDoctorProfileDto dto)
+        {
+            var doctor = await _repository.GetByUserIdAsync(userId);
+            if (doctor == null || doctor.IsDeleted)
+                throw new KeyNotFoundException("Clinician profile not found.");
+
+            if (!string.IsNullOrWhiteSpace(dto.LicenseNumber)
+                && !string.Equals(dto.LicenseNumber, doctor.LicenseNumber, StringComparison.OrdinalIgnoreCase))
+            {
+                if (await _repository.LicenseNumberExistsAsync(dto.LicenseNumber))
+                    throw new InvalidOperationException($"Doctor with license number {dto.LicenseNumber} already exists.");
+                doctor.LicenseNumber = dto.LicenseNumber;
+            }
+
+            if (!string.IsNullOrWhiteSpace(dto.FullName))
+                doctor.FullName = dto.FullName;
+
+            if (dto.Qualification != null)
+                doctor.Qualification = dto.Qualification;
+
+            if (dto.ExperienceYears.HasValue)
+                doctor.ExperienceYears = dto.ExperienceYears;
+
+            if (dto.Address is not null)
+            {
+                if (doctor.Address is null)
+                {
+                    var address = _mapper.Map<Address>(dto.Address);
+                    address.CreatedAt = DateTime.UtcNow;
+                    await _repository.AddAddressAsync(address);
+                    await _repository.SaveChangesAsync();
+                    doctor.AddressId = address.AddressId;
+                    doctor.Address = address;
+                }
+                else
+                {
+                    // Update existing address in-place (tracked)
+                    doctor.Address.AddressLine1 = dto.Address.AddressLine1;
+                    doctor.Address.AddressLine2 = dto.Address.AddressLine2;
+                    doctor.Address.City = dto.Address.City;
+                    doctor.Address.State = dto.Address.State;
+                    doctor.Address.PostalCode = dto.Address.PostalCode;
+                    doctor.Address.Country = dto.Address.Country;
+                }
+            }
+
+            if (dto.DepartmentIds is not null)
+            {
+                if (!dto.DepartmentIds.Any())
+                    throw new InvalidOperationException("At least one department must be specified.");
+
+                var departmentCount = await _repository.CountMatchingDepartmentsAsync(dto.DepartmentIds);
+                if (departmentCount != dto.DepartmentIds.Count)
+                    throw new InvalidOperationException("One or more specified departments do not exist.");
+
+                // Replace department assignments (cascade delete configured)
+                doctor.DoctorDepartments.Clear();
+                foreach (var departmentId in dto.DepartmentIds.Distinct())
+                {
+                    doctor.DoctorDepartments.Add(new DoctorDepartment
+                    {
+                        DoctorId = doctor.DoctorId,
+                        DepartmentId = departmentId
+                    });
+                }
+            }
+
+            await _repository.SaveChangesAsync();
+            return await GetDoctorByIdAsync(doctor.DoctorId);
+        }
+
+        /// <summary>
         /// Admin use only - creates user account and doctor profile in one transaction
         /// </summary>
         public async Task<DoctorDto> CreateDoctorAsync(CreateDoctorDto createDoctorDto)

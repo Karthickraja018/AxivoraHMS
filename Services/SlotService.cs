@@ -54,7 +54,11 @@ namespace Axivora.Services
             // If day is missing, try to generate it from template first
             if (day is null)
             {
-                await _availabilityService.GenerateAvailabilityDaysAsync(doctorId: doctorId);
+                // Generate availability days far enough to include the requested date (not just default 30 days)
+                var today = DateOnly.FromDateTime(DateTime.UtcNow);
+                var daysAhead = date > today ? (date.DayNumber - today.DayNumber) : 0;
+                daysAhead = Math.Min(daysAhead, 366);
+                await _availabilityService.GenerateAvailabilityDaysAsync(doctorId: doctorId, daysAhead: daysAhead);
                 day = await _dayRepository.GetByDoctorAndDateAsync(doctorId, date);
             }
 

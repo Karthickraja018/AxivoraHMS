@@ -12,5 +12,6 @@ namespace Axivora.Services.Interfaces
         Task ResendEmailVerificationOtpAsync(string email);
         Task SendPasswordResetTokenAsync(string email);
         Task<bool> ResetPasswordAsync(string email, string resetToken, string newPassword);
+        Task<bool> IsEmailAvailableAsync(string email);
     }
 }

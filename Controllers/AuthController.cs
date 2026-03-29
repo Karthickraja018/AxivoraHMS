@@ -220,5 +220,23 @@ namespace Axivora.Controllers
                 return BadRequest(new { message = ex.Message });
             }
         }
+
+        /// <summary>
+        /// Check whether an email address is available for registration.
+        /// Returns HTTP 200 with { available: true/false }.
+        /// </summary>
+        [HttpGet("email-available")]
+        [AllowAnonymous]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        public async Task<IActionResult> IsEmailAvailable([FromQuery] string email)
+        {
+            if (string.IsNullOrWhiteSpace(email))
+            {
+                return Ok(new { available = false });
+            }
+
+            var available = await _authService.IsEmailAvailableAsync(email);
+            return Ok(new { available });
+        }
     }
 }

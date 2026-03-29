@@ -18,8 +18,9 @@ namespace Axivora.Services.Interfaces
 
         /// <summary>
         /// Generates DoctorAvailabilityDay records for the next <paramref name="daysAhead"/> days
-        /// based on all active templates. Called by the background service.
+        /// based on all active templates. If <paramref name="doctorId"/> is provided, only generates
+        /// for that specific doctor. Called by background service and on-demand triggers.
         /// </summary>
-        Task GenerateAvailabilityDaysAsync(int daysAhead = 30);
+        Task GenerateAvailabilityDaysAsync(int? doctorId = null, int daysAhead = 30);
     }
 }

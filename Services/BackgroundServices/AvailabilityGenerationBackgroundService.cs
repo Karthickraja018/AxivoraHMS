@@ -6,7 +6,7 @@ namespace Axivora.Services.BackgroundServices
     /// Runs daily at midnight UTC to generate <see cref="Models.DoctorAvailabilityDay"/>
     /// records for the next 30 days based on all active DoctorAvailabilityTemplate entries.
     ///
-    /// Slot generation is now lazy (on-demand) — <see cref="ISlotService.EnsureSlotsGeneratedAsync"/>
+    /// Slot generation is now lazy (on-demand) â€” <see cref="ISlotService.EnsureSlotsGeneratedAsync"/>
     /// is called the first time a patient or doctor requests slots for a given date.
     /// This avoids the performance cost of generating slots for all doctors nightly
     /// regardless of whether those days will ever be accessed.
@@ -36,7 +36,8 @@ namespace Axivora.Services.BackgroundServices
                 "{Service} started. Will generate availability day records daily at {Time} UTC.",
                 nameof(AvailabilityGenerationBackgroundService), RunAt);
 
-            // Run once immediately on startup so the system is populated without waiting
+            // Allow some time for the app and DB to settle before initial run
+            await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
             await RunGenerationAsync(stoppingToken);
 
             while (!stoppingToken.IsCancellationRequested)
@@ -75,8 +76,8 @@ namespace Axivora.Services.BackgroundServices
                 _logger.LogInformation(
                     "Generating availability day records for the next {Days} days.", DaysAhead);
 
-                // Only generates DoctorAvailabilityDay rows — slots are created lazily on first access
-                await service.GenerateAvailabilityDaysAsync(DaysAhead);
+                // Only generates DoctorAvailabilityDay rows â€” slots are created lazily on first access
+                await service.GenerateAvailabilityDaysAsync(daysAhead: DaysAhead);
             }
             catch (Exception ex)
             {

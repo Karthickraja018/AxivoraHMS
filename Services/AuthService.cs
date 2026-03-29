@@ -75,12 +75,8 @@ namespace Axivora.Services
             await _repository.AddUserRoleAsync(new UserRole { UserId = user.UserId, RoleId = role.RoleId });
             await _repository.SaveChangesAsync();
 
-            // Generate OTP, hash it for storage, then enqueue the email
-            var otp       = GenerateOtp();
-            var expiresAt = DateTime.UtcNow.Add(OtpLifetime);
-            await _repository.SaveOtpAsync(user.UserId, _passwordHasher.Hash(otp), expiresAt);
-            await _repository.SaveChangesAsync();
-            await _emailService.SendEmailVerificationOtpAsync(user.Email, otp);
+            // OTP is NOT sent automatically on registration.
+            // The client must explicitly request it via /api/auth/resend-verification-otp.
 
             // 6. Generate JWT token using token service
             var token        = _tokenService.GenerateJwtToken(user.UserId, user.Email, registerDto.Role);
@@ -297,6 +293,20 @@ namespace Axivora.Services
             return true;
         }
 
+        /// <summary>
+        /// Returns true when no user exists with the given email (case-insensitive).
+        /// Used by the SPA to provide "email available / taken" hints during registration.
+        /// </summary>
+        public async Task<bool> IsEmailAvailableAsync(string email)
+        {
+            if (string.IsNullOrWhiteSpace(email))
+            {
+                throw new ArgumentException("Email is required.", nameof(email));
+            }
+
+            return !await _repository.EmailExistsAsync(email);
+        }
+
         // Private helpers
 
         private async Task<string> CreateRefreshTokenAsync(int userId)
@@ -332,7 +342,7 @@ namespace Axivora.Services
             var bytes = new byte[4];
             using var rng = RandomNumberGenerator.Create();
             rng.GetBytes(bytes);
-            // Produces a 6-digit number in the range 100000ñ999999
+            // Produces a 6-digit number in the range 100000ù999999
             var value = (BitConverter.ToUInt32(bytes, 0) % 900000) + 100000;
             return value.ToString();
         }

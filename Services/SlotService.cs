@@ -8,6 +8,7 @@ namespace Axivora.Services
 {
     public class SlotService : ISlotService
     {
+        private readonly IDoctorAvailabilityService _availabilityService;
         private readonly IAppointmentSlotRepository _slotRepository;
         private readonly IAvailabilityDayRepository _dayRepository;
         private readonly IMapper _mapper;
@@ -16,13 +17,15 @@ namespace Axivora.Services
         public SlotService(
             IAppointmentSlotRepository slotRepository,
             IAvailabilityDayRepository dayRepository,
+            IDoctorAvailabilityService availabilityService,
             IMapper mapper,
             ILogger<SlotService> logger)
         {
-            _slotRepository = slotRepository;
-            _dayRepository  = dayRepository;
-            _mapper         = mapper;
-            _logger         = logger;
+            _slotRepository      = slotRepository;
+            _dayRepository       = dayRepository;
+            _availabilityService = availabilityService;
+            _mapper              = mapper;
+            _logger              = logger;
         }
 
         /// <summary>
@@ -32,7 +35,7 @@ namespace Axivora.Services
         /// </summary>
         public async Task<IEnumerable<SlotDto>> GetAvailableSlotsAsync(int doctorId, DateOnly date)
         {
-            // Trigger on-demand generation before querying � idempotent if slots already exist
+            // Trigger on-demand generation before querying â€” idempotent if slots already exist
             await EnsureSlotsGeneratedAsync(doctorId, date);
 
             var slots = await _slotRepository.GetAvailableSlotsByDoctorAndDateAsync(doctorId, date);
@@ -42,17 +45,24 @@ namespace Axivora.Services
         /// <summary>
         /// Ensures slot records exist for the given doctor and date.
         /// If the availability day exists but has no slots yet, generates them now.
-        /// Idempotent � safe to call repeatedly; no slots are created twice.
+        /// Idempotent â€” safe to call repeatedly; no slots are created twice.
         /// </summary>
         public async Task EnsureSlotsGeneratedAsync(int doctorId, DateOnly date)
         {
             var day = await _dayRepository.GetByDoctorAndDateAsync(doctorId, date);
 
-            // No availability day configured for this doctor/date � nothing to generate
+            // If day is missing, try to generate it from template first
+            if (day is null)
+            {
+                await _availabilityService.GenerateAvailabilityDaysAsync(doctorId: doctorId);
+                day = await _dayRepository.GetByDoctorAndDateAsync(doctorId, date);
+            }
+
+            // Still null? No availability configured for this doctor/date.
             if (day is null)
                 return;
 
-            // Day exists but slots have not been generated yet � generate now
+            // Day exists but slots have not been generated yet â€” generate now
             if (!day.Slots.Any())
             {
                 _logger.LogInformation(
@@ -103,25 +113,41 @@ namespace Axivora.Services
         public async Task<IEnumerable<DoctorCalendarDayDto>> GetDoctorCalendarAsync(
             int doctorId, DateOnly from, DateOnly to)
         {
+            // PROACTIVE: Ensure days exist (from templates) for this range.
+            await _availabilityService.GenerateAvailabilityDaysAsync(doctorId: doctorId);
+
             var slots = await _slotRepository.GetSlotsByDoctorAndDateRangeAsync(doctorId, from, to);
             var days  = await _dayRepository.GetByDoctorAndDateRangeAsync(doctorId, from, to);
 
-            var dayStatusMap = days.ToDictionary(d => d.Date, d => d.Status);
+            // Group shifts by date to handle multiple templates on the same day (e.g. Morning/Evening)
+            var shiftsByDate = days
+                .GroupBy(d => d.Date)
+                .ToDictionary(g => g.Key, g => g.ToList());
 
-            var grouped = slots
+            var slotsByDate = slots
                 .GroupBy(s => DateOnly.FromDateTime(s.SlotStart))
                 .ToDictionary(g => g.Key, g => g.ToList());
 
             var result = new List<DoctorCalendarDayDto>();
             for (var date = from; date <= to; date = date.AddDays(1))
             {
-                grouped.TryGetValue(date, out var daySlots);
-                dayStatusMap.TryGetValue(date, out var dayStatus);
+                shiftsByDate.TryGetValue(date, out var dayShifts);
+                slotsByDate.TryGetValue(date, out var daySlots);
+
+                // If multiple shifts exist, pick the "most open" status
+                // Logic: if any shift is Open, day is Open. If all Closed, Closed. If any Leave, Leave (takes priority if blocked).
+                string status = "NoSchedule";
+                if (dayShifts != null && dayShifts.Any())
+                {
+                    if (dayShifts.Any(s => s.Status == AvailabilityDayStatus.Leave)) status = AvailabilityDayStatus.Leave;
+                    else if (dayShifts.Any(s => s.Status == AvailabilityDayStatus.Open)) status = AvailabilityDayStatus.Open;
+                    else status = dayShifts.First().Status;
+                }
 
                 result.Add(new DoctorCalendarDayDto
                 {
                     Date           = date,
-                    DayStatus      = dayStatus ?? "NoSchedule",
+                    DayStatus      = status,
                     TotalSlots     = daySlots?.Count ?? 0,
                     AvailableSlots = daySlots?.Count(s => s.Status == SlotStatus.Available) ?? 0,
                     BookedSlots    = daySlots?.Count(s => s.Status == SlotStatus.Booked) ?? 0
@@ -134,19 +160,45 @@ namespace Axivora.Services
         public async Task<IEnumerable<PatientAvailabilityPreviewDto>> GetAvailabilityPreviewAsync(
             int doctorId, DateOnly from, DateOnly to)
         {
-            var slots = await _slotRepository.GetAvailableSlotsByDoctorAndDateRangeAsync(doctorId, from, to);
+            // Option A: compute month preview from availability-day rows (template-derived),
+            // not from persisted slot rows. This makes new templates show immediately.
 
-            var grouped = slots
-                .GroupBy(s => DateOnly.FromDateTime(s.SlotStart))
-                .ToDictionary(g => g.Key, g => g.Count());
+            // Ensure availability days exist up to the requested range.
+            var today = DateOnly.FromDateTime(DateTime.UtcNow);
+            var daysAhead = to > today ? (to.DayNumber - today.DayNumber) : 0;
+            // Guard against accidental huge ranges
+            daysAhead = Math.Min(daysAhead, 366);
+            await _availabilityService.GenerateAvailabilityDaysAsync(doctorId: doctorId, daysAhead: daysAhead);
+
+            var days = (await _dayRepository.GetByDoctorAndDateRangeNoSlotsAsync(doctorId, from, to))
+                .ToList();
+
+            static int ComputeSlots(TimeSpan start, TimeSpan end, int durationMinutes)
+            {
+                if (durationMinutes <= 0) return 0;
+                var minutes = (end - start).TotalMinutes;
+                if (minutes <= 0) return 0;
+                return (int)Math.Floor(minutes / durationMinutes);
+            }
+
+            // Sum counts per date to support multiple shifts in one day.
+            var countsByDate = days
+                .Where(d => d.Status == AvailabilityDayStatus.Open)
+                .GroupBy(d => d.Date)
+                .ToDictionary(
+                    g => g.Key,
+                    g => g.Sum(d => ComputeSlots(d.StartTime, d.EndTime, d.SlotDurationMinutes))
+                );
 
             var result = new List<PatientAvailabilityPreviewDto>();
             for (var date = from; date <= to; date = date.AddDays(1))
             {
+                var count = countsByDate.TryGetValue(date, out var c) ? c : 0;
                 result.Add(new PatientAvailabilityPreviewDto
                 {
                     Date           = date,
-                    AvailableSlots = grouped.TryGetValue(date, out var count) ? count : 0
+                    AvailableCount = count,
+                    AvailableSlots = count,
                 });
             }
 
@@ -178,11 +230,11 @@ namespace Axivora.Services
 
         /// <summary>
         /// Generates and persists AppointmentSlot records for a given availability day.
-        /// Idempotent � skips generation if slots already exist for the day.
+        /// Idempotent â€” skips generation if slots already exist for the day.
         /// </summary>
         public async Task GenerateSlotsForDayAsync(int availabilityDayId)
         {
-            // Idempotent � do nothing if slots already exist
+            // Idempotent â€” do nothing if slots already exist
             if (await _slotRepository.AnyExistForDayAsync(availabilityDayId))
             {
                 _logger.LogDebug(

@@ -152,6 +152,15 @@ namespace Axivora
 
             var app = builder.Build();
 
+            // Development convenience: auto-apply EF migrations so local DB matches the model.
+            // Prevents runtime errors like "Invalid object name ..." when the database is empty/new.
+            if (app.Environment.IsDevelopment())
+            {
+                using var scope = app.Services.CreateScope();
+                var db = scope.ServiceProvider.GetRequiredService<AxivoraDbContext>();
+                db.Database.Migrate();
+            }
+
             // Configure the HTTP request pipeline.
             
             // Add Global Exception Handler Middleware

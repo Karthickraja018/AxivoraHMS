@@ -70,28 +70,32 @@ namespace Axivora.Services
         /// <summary>
         /// Generates <see cref="DoctorAvailabilityDay"/> records for the next
         /// <paramref name="daysAhead"/> days based on all active templates.
+        /// If <paramref name="doctorId"/> is provided, only generates for that specific doctor.
         ///
-        /// Slot generation is deliberately omitted here — slots are created lazily the first
+        /// Slot generation is deliberately omitted here Ã¢â‚¬â€ slots are created lazily the first
         /// time a caller requests them via <see cref="ISlotService.EnsureSlotsGeneratedAsync"/>.
         /// This avoids the performance cost of generating slots for every doctor nightly.
         /// </summary>
-        public async Task GenerateAvailabilityDaysAsync(int daysAhead = 30)
+        public async Task GenerateAvailabilityDaysAsync(int? doctorId = null, int daysAhead = 30)
         {
             var today     = DateOnly.FromDateTime(DateTime.UtcNow);
             var endDate   = today.AddDays(daysAhead);
             var templates = await _templateRepository.GetActiveTemplatesAsync();
+
+            if (doctorId.HasValue)
+                templates = templates.Where(t => t.DoctorId == doctorId.Value).ToList();
 
             // Group templates by doctor to manage existence checks in batches
             var templatesByDoctor = templates.GroupBy(t => t.DoctorId);
 
             foreach (var doctorGroup in templatesByDoctor)
             {
-                var doctorId = doctorGroup.Key;
-                // Pre-fetch existing days for this doctor in the target range to avoid N+1 queries in the loop
-                var existingDays = (await _dayRepository.GetByDoctorIdAsync(doctorId))
-                    .Where(d => d.Date >= today && d.Date <= endDate)
-                    .Select(d => d.Date)
-                    .ToHashSet();
+                var doctorIdNum = doctorGroup.Key;
+                // Pre-fetch ONLY existing days for this doctor — avoiding expensive slot includes
+                var existingDays = await _dayRepository.GetByDoctorAndDateRangeNoSlotsAsync(doctorIdNum, today, endDate);
+                var existingDaysMap = existingDays
+                    .GroupBy(d => d.Date)
+                    .ToDictionary(g => g.Key, g => g.ToList());
 
                 foreach (var template in doctorGroup)
                 {
@@ -106,13 +110,19 @@ namespace Axivora.Services
                         if (template.EffectiveToDate.HasValue && date > template.EffectiveToDate.Value)
                             continue;
 
-                        // Check in-memory HashSet instead of database roundtrip
-                        if (existingDays.Contains(date))
+                        // Check if a day record with this template ALREADY exists for this date
+                        existingDaysMap.TryGetValue(date, out var daysOnDate);
+                        var existingDay = daysOnDate?.FirstOrDefault(d => d.SourceTemplateId == template.Id);
+
+                        if (existingDay != null)
+                        {
+                            // If it exists from this template, we skip to avoid duplicate work.
                             continue;
+                        }
 
                         var day = new DoctorAvailabilityDay
                         {
-                            DoctorId            = doctorId,
+                            DoctorId            = doctorIdNum,
                             Date                = date,
                             StartTime           = template.StartTime,
                             EndTime             = template.EndTime,
@@ -124,12 +134,9 @@ namespace Axivora.Services
 
                         await _dayRepository.AddAsync(day);
                         
-                        // Prevent duplicate adds if multiple templates exist for the same day (should be validated at creation, but safe here)
-                        existingDays.Add(date); 
-
                         _logger.LogDebug(
-                            "Queued availability day {Date} for doctor {DoctorId} from template {TemplateId}.",
-                            date, doctorId, template.Id);
+                            "Queued availability day {Date} for doctor {DoctorIdNum} from template {TemplateId}.",
+                            date, doctorIdNum, template.Id);
                     }
                 }
             }
@@ -138,7 +145,7 @@ namespace Axivora.Services
             await _dayRepository.SaveChangesAsync();
 
             _logger.LogInformation(
-                "Availability day generation complete for window {Today} – {End}.", today, endDate);
+                "Availability day generation complete for window {Today} Ã¢â‚¬â€œ {End}.", today, endDate);
         }
     }
 }

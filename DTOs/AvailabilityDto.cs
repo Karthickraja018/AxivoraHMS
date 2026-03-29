@@ -178,6 +178,15 @@ namespace Axivora.DTOs
     public class PatientAvailabilityPreviewDto
     {
         public DateOnly Date { get; set; }
+        /// <summary>
+        /// Preferred field name for patient calendar UIs (camelCase: availableCount).
+        /// Represents the computed number of bookable slots on this date based on availability days.
+        /// </summary>
+        public int AvailableCount { get; set; }
+
+        /// <summary>
+        /// Backward-compatible alias (camelCase: availableSlots).
+        /// </summary>
         public int AvailableSlots { get; set; }
     }
 }

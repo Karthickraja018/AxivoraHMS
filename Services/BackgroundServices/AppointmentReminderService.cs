@@ -6,10 +6,10 @@ namespace Axivora.Services.BackgroundServices
 {
     /// <summary>
     /// Runs every hour and enqueues a reminder email for every appointment that:
-    ///   1. Is scheduled roughly 24 hours from now (within a ±30-minute window).
+    ///   1. Is scheduled roughly 24 hours from now (within a Â±30-minute window).
     ///   2. Has not already had a reminder sent (<see cref="Models.Appointment.ReminderSent"/> == false).
     ///
-    /// The reminder window is kept intentionally wide (±30 min) so that the job can
+    /// The reminder window is kept intentionally wide (Â±30 min) so that the job can
     /// still catch appointments even if a run is slightly delayed.
     /// </summary>
     public class AppointmentReminderService : BackgroundService
@@ -31,8 +31,11 @@ namespace Axivora.Services.BackgroundServices
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
-            _logger.LogInformation("{Service} started – will check for reminders every {Interval}.",
+            _logger.LogInformation("{Service} started â€“ will check for reminders every {Interval}.",
                 nameof(AppointmentReminderService), RunInterval);
+
+            // Give the app and DB some breathing room on startup
+            await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
 
             while (!stoppingToken.IsCancellationRequested)
             {

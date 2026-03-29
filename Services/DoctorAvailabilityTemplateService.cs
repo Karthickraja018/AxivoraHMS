@@ -8,18 +8,24 @@ namespace Axivora.Services
 {
     public class DoctorAvailabilityTemplateService : IDoctorAvailabilityTemplateService
     {
+        private readonly IDoctorAvailabilityService _availabilityService;
         private readonly IAvailabilityTemplateRepository _repository;
+        private readonly IAvailabilityDayRepository _dayRepository;
         private readonly IMapper _mapper;
         private readonly ILogger<DoctorAvailabilityTemplateService> _logger;
 
         public DoctorAvailabilityTemplateService(
             IAvailabilityTemplateRepository repository,
+            IAvailabilityDayRepository dayRepository,
+            IDoctorAvailabilityService availabilityService,
             IMapper mapper,
             ILogger<DoctorAvailabilityTemplateService> logger)
         {
-            _repository = repository;
-            _mapper     = mapper;
-            _logger     = logger;
+            _repository          = repository;
+            _dayRepository       = dayRepository;
+            _availabilityService = availabilityService;
+            _mapper              = mapper;
+            _logger              = logger;
         }
 
         public async Task<AvailabilityTemplateDto> CreateTemplateAsync(
@@ -45,6 +51,9 @@ namespace Axivora.Services
                 "Created availability template {TemplateId} for doctor {DoctorId} on {Day}.",
                 template.Id, doctorId, (DayOfWeek)dto.DayOfWeek);
 
+            // Re-generate availability day records for this doctor immediately so they are visible in patient booking
+            await _availabilityService.GenerateAvailabilityDaysAsync(doctorId: doctorId);
+
             // Reload with navigation to satisfy DoctorName mapping
             var created = await _repository.GetByIdWithDoctorAsync(template.Id);
             return _mapper.Map<AvailabilityTemplateDto>(created!);
@@ -67,6 +76,8 @@ namespace Axivora.Services
             if (template is null)
                 throw new KeyNotFoundException($"Availability template with ID {templateId} not found.");
 
+            var previouslyActive = template.IsActive;
+
             if (dto.IsActive.HasValue)
                 template.IsActive = dto.IsActive.Value;
 
@@ -78,6 +89,23 @@ namespace Axivora.Services
             }
 
             await _repository.SaveChangesAsync();
+
+            // If template was deactivated, clean up future unbooked slots
+            if (previouslyActive && !template.IsActive)
+            {
+                var removedCount = await _dayRepository.RemoveOpenDaysAsync(
+                    template.DoctorId,
+                    DateOnly.FromDateTime(DateTime.UtcNow),
+                    DateOnly.FromDateTime(DateTime.UtcNow).AddDays(90), 
+                    template.Id);
+                
+                _logger.LogInformation("Deactivated template {Id} and removed {Count} unbooked future days.", templateId, removedCount);
+            }
+            // If template was re-activated or kept active, trigger a regenerate to fill any gaps
+            else if (template.IsActive)
+            {
+                await _availabilityService.GenerateAvailabilityDaysAsync(doctorId: template.DoctorId);
+            }
 
             _logger.LogInformation("Updated availability template {TemplateId}.", templateId);
             return _mapper.Map<AvailabilityTemplateDto>(template);
@@ -93,7 +121,14 @@ namespace Axivora.Services
             template.IsActive = false;
             await _repository.SaveChangesAsync();
 
-            _logger.LogInformation("Deactivated availability template {TemplateId}.", templateId);
+            // Clean up future unbooked slots generated from this template
+            var removedCount = await _dayRepository.RemoveOpenDaysAsync(
+                template.DoctorId,
+                DateOnly.FromDateTime(DateTime.UtcNow),
+                DateOnly.FromDateTime(DateTime.UtcNow).AddDays(90),
+                template.Id);
+
+            _logger.LogInformation("Deactivated availability template {TemplateId} and removed {Count} unbooked future days.", templateId, removedCount);
         }
     }
 }

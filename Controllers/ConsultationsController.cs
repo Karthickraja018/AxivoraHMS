@@ -75,6 +75,26 @@ namespace Axivora.Controllers
         }
 
         /// <summary>
+        /// Get consultation by appointment ID (Doctor/Admin). Returns 404 if none exists yet.
+        /// </summary>
+        [HttpGet("appointment/{appointmentId:int}")]
+        [Authorize(Roles = "Doctor,Admin")]
+        [ProducesResponseType(typeof(ConsultationDto), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        public async Task<ActionResult<ConsultationDto>> GetConsultationByAppointmentId(int appointmentId)
+        {
+            try
+            {
+                var consultation = await _consultationService.GetConsultationByAppointmentIdAsync(appointmentId);
+                return Ok(consultation);
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return NotFound(new { message = ex.Message });
+            }
+        }
+
+        /// <summary>
         /// Get all consultations for the currently authenticated patient, with pagination.
         /// </summary>
         /// <param name="paginationParams">Pagination settings (pageNumber, pageSize).</param>

@@ -147,14 +147,15 @@ namespace Axivora.Services
             return await GetConsultationByIdAsync(consultation.ConsultationId);
         }
 
-        private static readonly HashSet<string> _clinicalStatuses = ["Checked-In", "In Progress", "Completed"];
+        // Once an appointment is Completed, consultation notes should be locked (no further edits/additions).
+        private static readonly HashSet<string> _clinicalStatuses = ["Checked-In", "In Progress"];
 
         private static void ValidateAppointmentStatusForConsultation(Appointment appointment)
         {
             var statusName = appointment.Status?.StatusName ?? string.Empty;
             if (!_clinicalStatuses.Contains(statusName))
                 throw new InvalidOperationException(
-                    "Consultation can only be created for active or completed appointments.");
+                    "Consultation can only be created/edited for active appointments (Checked-In, In Progress).");
         }
 
         public async Task<ConsultationDto> UpdateConsultationAsync(int consultationId, UpdateConsultationDto updateConsultationDto)
@@ -163,6 +164,11 @@ namespace Axivora.Services
 
             if (consultation == null)
                 throw new KeyNotFoundException($"Consultation with ID {consultationId} not found.");
+
+            var appt = await _repository.GetAppointmentWithStatusAsync(consultation.AppointmentId);
+            if (appt is null)
+                throw new KeyNotFoundException($"Appointment with ID {consultation.AppointmentId} not found.");
+            ValidateAppointmentStatusForConsultation(appt);
 
             var originalAppointmentId = consultation.AppointmentId;
             _mapper.Map(updateConsultationDto, consultation);
@@ -179,6 +185,11 @@ namespace Axivora.Services
 
             if (consultation == null)
                 throw new KeyNotFoundException($"Consultation with ID {consultationId} not found.");
+
+            var appt = await _repository.GetAppointmentWithStatusAsync(consultation.AppointmentId);
+            if (appt is null)
+                throw new KeyNotFoundException($"Appointment with ID {consultation.AppointmentId} not found.");
+            ValidateAppointmentStatusForConsultation(appt);
 
             if (await _repository.IsMedicineAlreadyPrescribedAsync(consultationId, prescriptionDto.MedicineId))
                 throw new InvalidOperationException(
@@ -199,6 +210,11 @@ namespace Axivora.Services
 
             if (consultation == null)
                 throw new KeyNotFoundException($"Consultation with ID {consultationId} not found.");
+
+            var appt = await _repository.GetAppointmentWithStatusAsync(consultation.AppointmentId);
+            if (appt is null)
+                throw new KeyNotFoundException($"Appointment with ID {consultation.AppointmentId} not found.");
+            ValidateAppointmentStatusForConsultation(appt);
 
             var orderedTest = _mapper.Map<OrderedTest>(orderedTestDto);
             orderedTest.ConsultationId = consultationId;

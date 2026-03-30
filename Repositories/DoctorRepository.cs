@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Axivora.Data;
+using Axivora.Helpers;
 using Axivora.Models;
 using Axivora.Repositories.Interfaces;
 
@@ -33,6 +34,50 @@ namespace Axivora.Repositories
             await BaseQuery()
                 .OrderBy(d => d.FullName)
                 .Skip(skip).Take(take)
+                .ToListAsync();
+
+        private IQueryable<Doctor> FilteredDoctorQuery(DoctorQueryParams p)
+        {
+            var q = _context.Doctors
+                .AsNoTracking()
+                .Include(d => d.Address)
+                .Include(d => d.DoctorDepartments)
+                    .ThenInclude(dd => dd.Department)
+                .Where(d => !d.IsDeleted);
+
+            if (p.IsActive.HasValue)
+                q = q.Where(d => d.IsActive == p.IsActive.Value);
+
+            if (!string.IsNullOrWhiteSpace(p.Name))
+            {
+                var term = p.Name.Trim();
+                q = q.Where(d => d.FullName.Contains(term));
+            }
+
+            if (p.DepartmentId.HasValue)
+            {
+                var deptId = p.DepartmentId.Value;
+                q = q.Where(d => d.DoctorDepartments.Any(dd => dd.DepartmentId == deptId));
+            }
+
+            if (p.HasAvailableSlots == true)
+            {
+                var now = DateTime.UtcNow;
+                q = q.Where(d => d.AppointmentSlots.Any(s =>
+                    s.Status == SlotStatus.Available && s.SlotStart >= now));
+            }
+
+            return q;
+        }
+
+        public async Task<int> CountFilteredAsync(DoctorQueryParams queryParams) =>
+            await FilteredDoctorQuery(queryParams).CountAsync();
+
+        public async Task<IEnumerable<Doctor>> GetFilteredPagedAsync(int skip, int take, DoctorQueryParams queryParams) =>
+            await FilteredDoctorQuery(queryParams)
+                .OrderBy(d => d.FullName)
+                .Skip(skip)
+                .Take(take)
                 .ToListAsync();
 
         public async Task<Doctor?> GetByIdAsync(int doctorId) =>

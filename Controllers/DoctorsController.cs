@@ -25,9 +25,9 @@ namespace Axivora.Controllers
         [HttpGet]
         [AllowAnonymous]
         [ProducesResponseType(typeof(PaginationResponse<DoctorDto>), StatusCodes.Status200OK)]
-        public async Task<ActionResult<PaginationResponse<DoctorDto>>> GetAllDoctors([FromQuery] PaginationParams paginationParams)
+        public async Task<ActionResult<PaginationResponse<DoctorDto>>> GetAllDoctors([FromQuery] DoctorQueryParams queryParams)
         {
-            var doctors = await _doctorService.GetAllDoctorsAsync(paginationParams);
+            var doctors = await _doctorService.GetAllDoctorsAsync(queryParams);
             return Ok(doctors);
         }
 

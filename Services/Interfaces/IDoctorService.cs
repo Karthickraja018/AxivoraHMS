@@ -7,7 +7,7 @@ namespace Axivora.Services.Interfaces
     public interface IDoctorService
     {
         Task<IEnumerable<DoctorDto>> GetAllDoctorsAsync();
-        Task<PaginationResponse<DoctorDto>> GetAllDoctorsAsync(PaginationParams paginationParams);
+        Task<PaginationResponse<DoctorDto>> GetAllDoctorsAsync(DoctorQueryParams queryParams);
         Task<DoctorDto> GetDoctorByIdAsync(int doctorId);
         Task<DoctorDto?> GetDoctorByUserIdAsync(int userId);
         Task InviteDoctorAsync(InviteDoctorDto dto);

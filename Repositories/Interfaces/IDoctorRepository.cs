@@ -1,3 +1,4 @@
+using Axivora.Helpers;
 using Axivora.Models;
 
 namespace Axivora.Repositories.Interfaces
@@ -7,6 +8,8 @@ namespace Axivora.Repositories.Interfaces
         Task<IEnumerable<Doctor>> GetAllAsync();
         Task<int> CountAsync();
         Task<IEnumerable<Doctor>> GetPagedAsync(int skip, int take);
+        Task<int> CountFilteredAsync(DoctorQueryParams queryParams);
+        Task<IEnumerable<Doctor>> GetFilteredPagedAsync(int skip, int take, DoctorQueryParams queryParams);
         Task<Doctor?> GetByIdAsync(int doctorId);
         Task<Doctor?> GetByUserIdAsync(int userId);
         Task<IEnumerable<Doctor>> GetByDepartmentAsync(int departmentId);

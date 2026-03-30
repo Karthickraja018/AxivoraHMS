@@ -33,18 +33,19 @@ namespace Axivora.Services
             return _mapper.Map<IEnumerable<DoctorDto>>(doctors);
         }
 
-        public async Task<PaginationResponse<DoctorDto>> GetAllDoctorsAsync(PaginationParams paginationParams)
+        public async Task<PaginationResponse<DoctorDto>> GetAllDoctorsAsync(DoctorQueryParams queryParams)
         {
-            var totalCount = await _repository.CountAsync();
-            var doctors = await _repository.GetPagedAsync(
-                (paginationParams.PageNumber - 1) * paginationParams.PageSize,
-                paginationParams.PageSize);
+            var totalCount = await _repository.CountFilteredAsync(queryParams);
+            var doctors = await _repository.GetFilteredPagedAsync(
+                (queryParams.PageNumber - 1) * queryParams.PageSize,
+                queryParams.PageSize,
+                queryParams);
 
             return new PaginationResponse<DoctorDto>(
                 _mapper.Map<IEnumerable<DoctorDto>>(doctors),
                 totalCount,
-                paginationParams.PageNumber,
-                paginationParams.PageSize);
+                queryParams.PageNumber,
+                queryParams.PageSize);
         }
 
         public async Task<DoctorDto> GetDoctorByIdAsync(int doctorId)

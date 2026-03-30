@@ -13,6 +13,7 @@ namespace Axivora.Services
         private readonly IAvailabilityDayRepository _dayRepository;
         private readonly IMapper _mapper;
         private readonly ILogger<SlotService> _logger;
+        private static readonly SemaphoreSlim _generationLock = new SemaphoreSlim(1, 1);
 
         public SlotService(
             IAppointmentSlotRepository slotRepository,
@@ -49,31 +50,48 @@ namespace Axivora.Services
         /// </summary>
         public async Task EnsureSlotsGeneratedAsync(int doctorId, DateOnly date)
         {
-            var day = await _dayRepository.GetByDoctorAndDateAsync(doctorId, date);
-
-            // If day is missing, try to generate it from template first
-            if (day is null)
+            // Acquire lock to avoid concurrent generation for the same doctor/date
+            await _generationLock.WaitAsync();
+            try
             {
-                // Generate availability days far enough to include the requested date (not just default 30 days)
+                // Always ensure day records exist for this doctor/date before fetching them.
+                // This ensures that if a new second shift (e.g. Evening) was added to a day that already has 
+                // a first shift (e.g. Morning), both are considered.
                 var today = DateOnly.FromDateTime(DateTime.UtcNow);
                 var daysAhead = date > today ? (date.DayNumber - today.DayNumber) : 0;
                 daysAhead = Math.Min(daysAhead, 366);
                 await _availabilityService.GenerateAvailabilityDaysAsync(doctorId: doctorId, daysAhead: daysAhead);
-                day = await _dayRepository.GetByDoctorAndDateAsync(doctorId, date);
+
+                var days = (await _dayRepository.GetByDoctorAndDateRangeAsync(doctorId, date, date)).ToList();
+
+                // Still empty? No availability configured for this doctor/date.
+                if (!days.Any())
+                    return;
+
+                _logger.LogDebug(
+                    "Ensuring slots for Doctor {DoctorId} on {Date}. Found {ShiftCount} shifts.",
+                    doctorId, date, days.Count);
+
+                foreach (var day in days)
+                {
+                    // Check if slots are truly empty — this is now protected by the semaphore
+                    if (!await _slotRepository.AnyExistForDayAsync(day.Id))
+                    {
+                        _logger.LogInformation(
+                            "Generating slots for Shift {ShiftId} ({Start}-{End}) for Doctor {DoctorId} on {Date}.",
+                            day.Id, day.StartTime, day.EndTime, doctorId, date);
+
+                        await GenerateSlotsForDayAsync(day.Id);
+                    }
+                    else
+                    {
+                        _logger.LogDebug("Slots already exist for Shift {ShiftId} on {Date}.", day.Id, date);
+                    }
+                }
             }
-
-            // Still null? No availability configured for this doctor/date.
-            if (day is null)
-                return;
-
-            // Day exists but slots have not been generated yet â€” generate now
-            if (!day.Slots.Any())
+            finally
             {
-                _logger.LogInformation(
-                    "On-demand slot generation triggered for doctor {DoctorId} on {Date}.",
-                    doctorId, date);
-
-                await GenerateSlotsForDayAsync(day.Id);
+                _generationLock.Release();
             }
         }
 

@@ -12,6 +12,7 @@ namespace Axivora.Services
         private readonly IAvailabilityDayRepository _dayRepository;
         private readonly IMapper _mapper;
         private readonly ILogger<DoctorAvailabilityService> _logger;
+        private static readonly SemaphoreSlim _generationLock = new SemaphoreSlim(1, 1);
 
         public DoctorAvailabilityService(
             IAvailabilityTemplateRepository templateRepository,
@@ -78,9 +79,12 @@ namespace Axivora.Services
         /// </summary>
         public async Task GenerateAvailabilityDaysAsync(int? doctorId = null, int daysAhead = 30)
         {
-            var today     = DateOnly.FromDateTime(DateTime.UtcNow);
-            var endDate   = today.AddDays(daysAhead);
-            var templates = await _templateRepository.GetActiveTemplatesAsync();
+            await _generationLock.WaitAsync();
+            try
+            {
+                var today     = DateOnly.FromDateTime(DateTime.UtcNow);
+                var endDate   = today.AddDays(daysAhead);
+                var templates = await _templateRepository.GetActiveTemplatesAsync(doctorId);
 
             if (doctorId.HasValue)
                 templates = templates.Where(t => t.DoctorId == doctorId.Value).ToList();
@@ -146,6 +150,11 @@ namespace Axivora.Services
 
             _logger.LogInformation(
                 "Availability day generation complete for window {Today} Ã¢â‚¬â€œ {End}.", today, endDate);
+            }
+            finally
+            {
+                _generationLock.Release();
+            }
         }
     }
 }

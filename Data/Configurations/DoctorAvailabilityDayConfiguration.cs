@@ -33,10 +33,9 @@ namespace Axivora.Data.Configurations
                    .IsRequired()
                    .HasDefaultValueSql("SYSDATETIME()");
 
-            // One doctor can only have one availability record per date
+            // Index for efficient calendar lookups
             builder.HasIndex(d => new { d.DoctorId, d.Date })
-                   .IsUnique()
-                   .HasDatabaseName("UQ_AvailabilityDays_DoctorId_Date");
+                   .HasDatabaseName("IX_AvailabilityDays_DoctorId_Date");
 
             // Index for efficient slot generation queries
             builder.HasIndex(d => new { d.DoctorId, d.Date, d.Status })

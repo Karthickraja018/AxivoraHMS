@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
+using Microsoft.Data.SqlClient;
 using Axivora.Data;
 using Axivora.Models;
 using Axivora.Repositories.Interfaces;
@@ -74,8 +75,40 @@ namespace Axivora.Repositories
         public async Task AddRangeAsync(IEnumerable<AppointmentSlot> slots) =>
             await _context.AppointmentSlots.AddRangeAsync(slots);
 
-        public async Task SaveChangesAsync() =>
-            await _context.SaveChangesAsync();
+        public async Task SaveChangesAsync()
+        {
+            try
+            {
+                await _context.SaveChangesAsync();
+            }
+            catch (DbUpdateException ex) when (IsAppointmentSlotsPrimaryKeyViolation(ex))
+            {
+                // Self-heal: identity seed got out of sync (common in dev DBs after reseeds/restores).
+                await ReseedAppointmentSlotsIdentityAsync();
+                await _context.SaveChangesAsync();
+            }
+        }
+
+        private static bool IsAppointmentSlotsPrimaryKeyViolation(DbUpdateException ex)
+        {
+            if (ex.InnerException is not SqlException sqlEx)
+                return false;
+
+            // 2627 = Violation of PRIMARY KEY constraint / unique index
+            return sqlEx.Number == 2627 &&
+                   sqlEx.Message.Contains("PK_AppointmentSlots", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private async Task ReseedAppointmentSlotsIdentityAsync()
+        {
+            // Reseed to current max so next insert uses MAX+1.
+            const string sql = """
+                               DECLARE @maxId int = (SELECT ISNULL(MAX([Id]), 0) FROM [AppointmentSlots]);
+                               DBCC CHECKIDENT ('[AppointmentSlots]', RESEED, @maxId);
+                               """;
+
+            await _context.Database.ExecuteSqlRawAsync(sql);
+        }
 
         public async Task BeginTransactionAsync() =>
             _transaction = await _context.Database.BeginTransactionAsync();

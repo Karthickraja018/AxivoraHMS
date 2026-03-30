@@ -24,6 +24,9 @@ namespace Axivora.Data.Configurations
             builder.HasIndex(ur => new { ur.UserId, ur.RoleId })
                    .IsUnique()
                    .HasDatabaseName("UQ_UserRole");
+
+            // Filter out roles for soft-deleted users to avoid data inconsistency and EF warnings
+            builder.HasQueryFilter(ur => !ur.User.IsDeleted);
         }
     }
 }

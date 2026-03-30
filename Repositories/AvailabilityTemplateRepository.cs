@@ -34,11 +34,17 @@ namespace Axivora.Repositories
                 .ThenBy(t => t.StartTime)
                 .ToListAsync();
 
-        public async Task<IEnumerable<DoctorAvailabilityTemplate>> GetActiveTemplatesAsync() =>
-            await _context.DoctorAvailabilityTemplates
+        public async Task<IEnumerable<DoctorAvailabilityTemplate>> GetActiveTemplatesAsync(int? doctorId = null)
+        {
+            var query = _context.DoctorAvailabilityTemplates
                 .Where(t => t.IsActive &&
-                    (t.EffectiveToDate == null || t.EffectiveToDate >= DateOnly.FromDateTime(DateTime.UtcNow)))
-                .ToListAsync();
+                    (t.EffectiveToDate == null || t.EffectiveToDate >= DateOnly.FromDateTime(DateTime.UtcNow)));
+
+            if (doctorId.HasValue)
+                query = query.Where(t => t.DoctorId == doctorId.Value);
+
+            return await query.ToListAsync();
+        }
 
         public async Task AddAsync(DoctorAvailabilityTemplate template) =>
             await _context.DoctorAvailabilityTemplates.AddAsync(template);

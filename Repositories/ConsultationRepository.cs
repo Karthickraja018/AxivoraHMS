@@ -18,6 +18,8 @@ namespace Axivora.Repositories
             _context.Consultations
                 .Include(c => c.ICDCode)
                 .Include(c => c.Appointment)
+                    .ThenInclude(a => a!.Patient)
+                .Include(c => c.Appointment)
                     .ThenInclude(a => a!.Doctor)
                 .Include(c => c.Prescriptions)
                     .ThenInclude(p => p.Medicine)

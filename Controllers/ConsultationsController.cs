@@ -4,6 +4,7 @@ using System.Security.Claims;
 using Axivora.DTOs;
 using Axivora.Helpers;
 using Axivora.Services.Interfaces;
+using Microsoft.Extensions.Logging;
 
 namespace Axivora.Controllers
 {
@@ -14,11 +15,25 @@ namespace Axivora.Controllers
     {
         private readonly IConsultationService _consultationService;
         private readonly IPatientService _patientService;
+        private readonly IDoctorService _doctorService;
+        private readonly IAppointmentService _appointmentService;
+        private readonly IPdfService _pdfService;
+        private readonly ILogger<ConsultationsController> _logger;
 
-        public ConsultationsController(IConsultationService consultationService, IPatientService patientService)
+        public ConsultationsController(
+            IConsultationService consultationService,
+            IPatientService patientService,
+            IDoctorService doctorService,
+            IAppointmentService appointmentService,
+            IPdfService pdfService,
+            ILogger<ConsultationsController> logger)
         {
             _consultationService = consultationService;
-            _patientService = patientService;
+            _patientService      = patientService;
+            _doctorService       = doctorService;
+            _appointmentService  = appointmentService;
+            _pdfService          = pdfService;
+            _logger              = logger;
         }
 
         /// <summary>
@@ -62,12 +77,18 @@ namespace Axivora.Controllers
         {
             var consultation = await _consultationService.GetConsultationByIdAsync(id);
 
-            var role = User.FindFirstValue(ClaimTypes.Role);
+            var role   = User.FindFirstValue(ClaimTypes.Role);
+            var userId = int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
             if (role == "Patient")
             {
-                var userId = int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
                 var patient = await _patientService.GetPatientByUserIdAsync(userId);
                 if (consultation.PatientId != patient.PatientId)
+                    return Forbid();
+            }
+            else if (role == "Doctor")
+            {
+                var doctor = await _doctorService.GetDoctorByUserIdAsync(userId);
+                if (doctor is null || consultation.DoctorId != doctor.DoctorId)
                     return Forbid();
             }
 
@@ -75,23 +96,98 @@ namespace Axivora.Controllers
         }
 
         /// <summary>
-        /// Get consultation by appointment ID (Doctor/Admin). Returns 404 if none exists yet.
+        /// Get consultation by appointment ID. Patients see only their own visit; doctors see their own cases.
         /// </summary>
         [HttpGet("appointment/{appointmentId:int}")]
-        [Authorize(Roles = "Doctor,Admin")]
         [ProducesResponseType(typeof(ConsultationDto), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
         public async Task<ActionResult<ConsultationDto>> GetConsultationByAppointmentId(int appointmentId)
         {
+            var role   = User.FindFirstValue(ClaimTypes.Role);
+            var userId = int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+
+            // Ownership must be checked against the appointment entity:
+            // - Patient can only access consultations for their own appointments
+            // - Doctor can only access consultations for their own appointments
+            if (string.Equals(role, "Patient", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(role, "Doctor", StringComparison.OrdinalIgnoreCase))
+            {
+                try
+                {
+                    // Fetch appointment without ownership enforcement so we can compare explicit IDs.
+                    // This makes the check deterministic and avoids false negatives from
+                    // mismatched "callerRole" strings inside lower layers.
+                    var appt = await _appointmentService.GetAppointmentByIdAsync(appointmentId);
+
+                    if (string.Equals(role, "Patient", StringComparison.OrdinalIgnoreCase))
+                    {
+                        var patient = await _patientService.GetPatientByUserIdAsync(userId);
+                        if (patient is null || appt.PatientId != patient.PatientId)
+                        {
+                            _logger.LogWarning(
+                                "403 visit access denied: appointmentId={AppointmentId}, callerUserId={CallerUserId}, appointmentPatientId={AppointmentPatientId}, callerPatientId={CallerPatientId}",
+                                appointmentId, userId, appt.PatientId, patient?.PatientId);
+                            return Forbid();
+                        }
+                    }
+                    else if (string.Equals(role, "Doctor", StringComparison.OrdinalIgnoreCase))
+                    {
+                        var doctor = await _doctorService.GetDoctorByUserIdAsync(userId);
+                        if (doctor is null || appt.DoctorId != doctor.DoctorId)
+                        {
+                            _logger.LogWarning(
+                                "403 visit access denied: appointmentId={AppointmentId}, callerUserId={CallerUserId}, appointmentDoctorId={AppointmentDoctorId}, callerDoctorId={CallerDoctorId}",
+                                appointmentId, userId, appt.DoctorId, doctor?.DoctorId);
+                            return Forbid();
+                        }
+                    }
+                }
+                catch (KeyNotFoundException ex)
+                {
+                    return NotFound(new { message = ex.Message });
+                }
+            }
+
+            ConsultationDto consultation;
             try
             {
-                var consultation = await _consultationService.GetConsultationByAppointmentIdAsync(appointmentId);
-                return Ok(consultation);
+                consultation = await _consultationService.GetConsultationByAppointmentIdAsync(appointmentId);
             }
             catch (KeyNotFoundException ex)
             {
                 return NotFound(new { message = ex.Message });
             }
+
+            return Ok(consultation);
+        }
+
+        /// <summary>
+        /// Download prescription as PDF (QuestPDF). Patient must own the consultation; doctor must own the case.
+        /// </summary>
+        [HttpGet("{id:int}/prescription-pdf")]
+        [ProducesResponseType(typeof(FileContentResult), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
+        public async Task<IActionResult> GetPrescriptionPdf(int id)
+        {
+            var role   = User.FindFirstValue(ClaimTypes.Role)!;
+            var userId = int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+            byte[] pdf;
+            try
+            {
+                pdf = await _pdfService.BuildPrescriptionPdfAsync(id, userId, role);
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return NotFound(new { message = ex.Message });
+            }
+            catch (UnauthorizedAccessException)
+            {
+                return Forbid();
+            }
+
+            return File(pdf, "application/pdf", $"prescription-{id}.pdf");
         }
 
         /// <summary>

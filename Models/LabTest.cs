@@ -10,6 +10,12 @@ namespace Axivora.Models
         [Required(ErrorMessage = "Test name is required")]
         public string TestName { get; set; } = null!;
 
+        [StringLength(50)]
+        public string? Unit { get; set; }
+
+        [StringLength(200)]
+        public string? ReferenceRange { get; set; }
+
         // Navigation properties
         public ICollection<OrderedTest> OrderedTests { get; set; } = new List<OrderedTest>();
     }

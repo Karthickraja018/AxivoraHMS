@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
+using Axivora.Configuration;
 using Axivora.Data;
 using Axivora.Middleware;
 using Axivora.Services;
@@ -35,6 +36,9 @@ namespace Axivora
             // Bind EmailSettings from appsettings.json and make available via IOptions<EmailSettings>
             builder.Services.Configure<EmailSettings>(
                 builder.Configuration.GetSection("EmailSettings"));
+
+            builder.Services.Configure<HospitalPdfSettings>(
+                builder.Configuration.GetSection("HospitalPdf"));
 
             // Singleton queue: one shared ConcurrentQueue<EmailMessage> across the entire app lifetime
             builder.Services.AddSingleton<IEmailQueue, EmailQueue>();
@@ -105,13 +109,14 @@ namespace Axivora
             builder.Services.AddScoped<IAdminUserService, AdminUserService>();
             builder.Services.AddScoped<IPatientVitalService, PatientVitalService>();
             builder.Services.AddScoped<IPatientDashboardService, PatientDashboardService>();
+            builder.Services.AddScoped<IPdfService, PdfService>();
             // Date-based slot scheduling services
             builder.Services.AddScoped<IDoctorAvailabilityTemplateService, DoctorAvailabilityTemplateService>();
             builder.Services.AddScoped<IDoctorAvailabilityService, DoctorAvailabilityService>();
             builder.Services.AddScoped<ISlotService, SlotService>();
             builder.Services.AddHostedService<AvailabilityGenerationBackgroundService>();
 
-            // FIX 11: Idempotency service ó prevents duplicate bookings on network retries
+            // FIX 11: Idempotency service ù prevents duplicate bookings on network retries
             builder.Services.AddScoped<IdempotencyService>();
 
             // Register Repositories

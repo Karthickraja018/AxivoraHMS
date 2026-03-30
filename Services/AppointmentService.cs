@@ -82,14 +82,17 @@ namespace Axivora.Services
             return _mapper.Map<IEnumerable<AppointmentDto>>(appointments);
         }
 
-        public async Task<PaginationResponse<AppointmentDto>> GetMyAppointmentsAsync(int userId, PaginationParams paginationParams, string? status)
+        public async Task<PaginationResponse<AppointmentDto>> GetMyAppointmentsAsync(
+            int userId, PaginationParams paginationParams, PatientAppointmentsFilter? filter)
         {
             var patient = await _repository.GetPatientByUserIdAsync(userId)
                 ?? throw new KeyNotFoundException("Patient profile not found. Please complete your profile first.");
 
-            var totalCount   = await _repository.CountByPatientAsync(patient.PatientId, status);
+            filter ??= new PatientAppointmentsFilter();
+
+            var totalCount   = await _repository.CountByPatientAsync(patient.PatientId, filter);
             var appointments = await _repository.GetPagedByPatientAsync(
-                patient.PatientId, status,
+                patient.PatientId, filter,
                 (paginationParams.PageNumber - 1) * paginationParams.PageSize,
                 paginationParams.PageSize);
 
@@ -164,10 +167,13 @@ namespace Axivora.Services
             return await GetAppointmentByIdAsync(appointmentId);
         }
 
-        public async Task<AppointmentDto> UpdateAppointmentStatusAsync(int appointmentId, string statusName, string callerRole)
+        public async Task<AppointmentDto> UpdateAppointmentStatusAsync(
+            int appointmentId, string statusName, int callerUserId, string callerRole)
         {
             var appointment = await _repository.GetByIdAsync(appointmentId)
                 ?? throw new KeyNotFoundException($"Appointment with ID {appointmentId} not found.");
+
+            await EnforceOwnershipAsync(appointment, callerUserId, callerRole);
 
             var targetStatus = await _repository.GetStatusByNameAsync(statusName)
                 ?? throw new KeyNotFoundException($"Appointment status '{statusName}' not found.");
@@ -175,9 +181,67 @@ namespace Axivora.Services
             var currentStatusName = appointment.Status?.StatusName ?? string.Empty;
             AppointmentStatusTransitions.Validate(currentStatusName, statusName, callerRole);
 
+            if (string.Equals(currentStatusName, statusName, StringComparison.OrdinalIgnoreCase))
+                return await GetAppointmentByIdAsync(appointmentId);
+
+            if (statusName == "Cancelled")
+            {
+                await ApplyCancelledWithSlotReleaseAsync(appointment);
+                _logger.LogInformation(
+                    "Appointment {AppointmentId} cancelled (status-only, record retained).", appointmentId);
+                return await GetAppointmentByIdAsync(appointmentId);
+            }
+
             appointment.StatusId = targetStatus.StatusId;
             await _repository.SaveChangesAsync();
+
+            if (statusName == "Confirmed" && currentStatusName == "Scheduled")
+                await SendAppointmentConfirmedEmailAsync(appointment);
+
             return await GetAppointmentByIdAsync(appointmentId);
+        }
+
+        private async Task ApplyCancelledWithSlotReleaseAsync(Appointment appointment)
+        {
+            await _repository.BeginTransactionAsync();
+            try
+            {
+                if (appointment.SlotId.HasValue)
+                {
+                    var slot = await _repository.GetSlotByIdAsync(appointment.SlotId.Value);
+                    if (slot is not null)
+                    {
+                        slot.Status        = SlotStatus.Available;
+                        slot.AppointmentId = null;
+                    }
+                }
+
+                var cancelledStatus = await _repository.GetStatusByNameAsync("Cancelled")
+                    ?? throw new InvalidOperationException("Appointment status 'Cancelled' is not configured.");
+                appointment.StatusId = cancelledStatus.StatusId;
+
+                await _repository.SaveChangesAsync();
+                await _repository.CommitTransactionAsync();
+            }
+            catch
+            {
+                await _repository.RollbackTransactionAsync();
+                throw;
+            }
+        }
+
+        private async Task SendAppointmentConfirmedEmailAsync(Appointment appointment)
+        {
+            var patientWithUser = await _repository.GetPatientWithUserAsync(appointment.PatientId);
+            var doctorName      = await _repository.GetDoctorFullNameAsync(appointment.DoctorId);
+            if (patientWithUser?.User?.Email is string patientEmail)
+            {
+                await _emailService.SendAppointmentConfirmationAsync(
+                    patientEmail,
+                    patientWithUser.FullName,
+                    doctorName ?? "Doctor",
+                    appointment.AppointmentStart);
+            }
         }
 
         // Cancel (legacy)
@@ -208,11 +272,11 @@ namespace Axivora.Services
         /// <summary>
         /// Books a slot for the caller patient.
         ///
-        /// FIX 1 — Race condition prevention: the slot is fetched and its availability
+        /// FIX 1 ? Race condition prevention: the slot is fetched and its availability
         /// validated INSIDE the transaction so no concurrent request can book the same slot
         /// between the check and the update.
         ///
-        /// FIX 2 — Optimistic concurrency: if two transactions reach SaveChanges at the same
+        /// FIX 2 ? Optimistic concurrency: if two transactions reach SaveChanges at the same
         /// time, the RowVersion token on AppointmentSlot causes one to throw
         /// DbUpdateConcurrencyException, which is converted to InvalidOperationException.
         /// </summary>
@@ -275,7 +339,7 @@ namespace Axivora.Services
                 var doctorName      = await _repository.GetDoctorFullNameAsync(slot.DoctorId);
                 if (patientWithUser?.User?.Email is string patientEmail)
                 {
-                    await _emailService.SendAppointmentConfirmationAsync(
+                    await _emailService.SendAppointmentRequestReceivedAsync(
                         patientEmail,
                         patientWithUser.FullName,
                         doctorName ?? "Doctor",
@@ -369,65 +433,6 @@ namespace Axivora.Services
                 await _repository.RollbackTransactionAsync();
                 throw;
             }
-        }
-
-        /// <summary>
-        /// Cancels (soft-deletes) an appointment and releases its slot.
-        ///
-        /// FIX 4: Slot release, soft-delete, and status update are wrapped in a single
-        /// transaction so all three entities are updated atomically.
-        /// </summary>
-        public async Task DeleteAsync(int appointmentId, int callerUserId, string callerRole)
-        {
-            var appointment = await _repository.GetByIdAsync(appointmentId)
-                ?? throw new KeyNotFoundException($"Appointment with ID {appointmentId} not found.");
-
-            if (callerRole == "Patient")
-            {
-                var patient = await _repository.GetPatientByUserIdAsync(callerUserId);
-                if (patient is null || appointment.PatientId != patient.PatientId)
-                    throw new UnauthorizedAccessException(
-                        "You do not have permission to cancel this appointment.");
-            }
-            else if (callerRole == "Doctor")
-            {
-                var doctor = await _repository.GetDoctorByUserIdAsync(callerUserId);
-                if (doctor is null || appointment.DoctorId != doctor.DoctorId)
-                    throw new UnauthorizedAccessException(
-                        "You do not have permission to cancel this appointment.");
-            }
-
-            // FIX 4: Wrap slot release + soft-delete + status update in a single transaction
-            await _repository.BeginTransactionAsync();
-            try
-            {
-                if (appointment.SlotId.HasValue)
-                {
-                    var slot = await _repository.GetSlotByIdAsync(appointment.SlotId.Value);
-                    if (slot is not null)
-                    {
-                        slot.Status        = SlotStatus.Available;
-                        slot.AppointmentId = null;
-                    }
-                }
-
-                appointment.IsDeleted = true;
-
-                var cancelledStatus = await _repository.GetStatusByNameAsync("Cancelled");
-                if (cancelledStatus is not null)
-                    appointment.StatusId = cancelledStatus.StatusId;
-
-                await _repository.SaveChangesAsync();
-                await _repository.CommitTransactionAsync();
-            }
-            catch
-            {
-                await _repository.RollbackTransactionAsync();
-                throw;
-            }
-
-            _logger.LogInformation(
-                "Cancelled appointment {AppointmentId} by user {UserId}.", appointmentId, callerUserId);
         }
 
         // Private helpers

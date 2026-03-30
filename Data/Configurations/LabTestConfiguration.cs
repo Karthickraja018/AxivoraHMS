@@ -19,6 +19,12 @@ namespace Axivora.Data.Configurations
                    .IsRequired()
                    .HasMaxLength(150);
 
+            builder.Property(lt => lt.Unit)
+                   .HasMaxLength(50);
+
+            builder.Property(lt => lt.ReferenceRange)
+                   .HasMaxLength(200);
+
             builder.HasIndex(lt => lt.TestName)
                    .IsUnique()
                    .HasDatabaseName("IX_LabTests_TestName");

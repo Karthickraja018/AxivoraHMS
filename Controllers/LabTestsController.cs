@@ -13,10 +13,39 @@ namespace Axivora.Controllers
     public class LabTestsController : ControllerBase
     {
         private readonly ILabTestService _labTestService;
+        private readonly IPdfService _pdfService;
 
-        public LabTestsController(ILabTestService labTestService)
+        public LabTestsController(ILabTestService labTestService, IPdfService pdfService)
         {
             _labTestService = labTestService;
+            _pdfService     = pdfService;
+        }
+
+        /// <summary>
+        /// Download a single ordered test report as PDF. <paramref name="id"/> is the ordered-test id.
+        /// </summary>
+        [HttpGet("{id:int}/report-pdf")]
+        [Authorize(Roles = "Patient,Doctor,Admin")]
+        [ProducesResponseType(typeof(FileContentResult), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
+        public async Task<IActionResult> GetLabReportPdf(int id)
+        {
+            var role   = User.FindFirstValue(ClaimTypes.Role)!;
+            var userId = int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+            try
+            {
+                var pdf = await _pdfService.BuildLabReportPdfAsync(id, userId, role);
+                return File(pdf, "application/pdf", $"lab-report-{id}.pdf");
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return NotFound(new { message = ex.Message });
+            }
+            catch (UnauthorizedAccessException)
+            {
+                return Forbid();
+            }
         }
 
         /// <summary>
@@ -78,7 +107,7 @@ namespace Axivora.Controllers
         /// </remarks>
         /// <param name="search">Optional partial name filter (e.g. <c>blood</c> matches <c>Blood Glucose - Fasting</c>).</param>
         /// <param name="pageNumber">1-based page number. Defaults to <c>1</c>.</param>
-        /// <param name="pageSize">Records per page (1ñ100). Defaults to <c>20</c>.</param>
+        /// <param name="pageSize">Records per page (1ù100). Defaults to <c>20</c>.</param>
         /// <response code="200">Paginated lab test catalogue returned successfully.</response>
         /// <response code="401">JWT token is missing or invalid.</response>
         [HttpGet("catalogue")]

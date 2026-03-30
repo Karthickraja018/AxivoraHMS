@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Appointment Confirmed</title>
+  <title>Appointment request received</title>
   <style>
     body { margin: 0; padding: 0; background-color: #f4f6f9; font-family: Arial, sans-serif; }
     .wrapper { max-width: 600px; margin: 40px auto; background: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
@@ -22,22 +22,22 @@
 <body>
   <div class="wrapper">
     <div class="header">
-      <h1>&#10003; Appointment Confirmed</h1>
+      <h1>Appointment request received</h1>
     </div>
     <div class="body">
       <p>Dear <strong>{PatientName}</strong>,</p>
-      <p>Your appointment has been <strong>confirmed by your clinician</strong>. Here are your appointment details:</p>
+      <p>We have received your appointment request. Your clinician will review it and you will receive another email when it is confirmed.</p>
       <div class="detail-card">
         <div class="row">
           <span class="label">Doctor</span>
           <span class="value">Dr. {DoctorName}</span>
         </div>
         <div class="row">
-          <span class="label">Date &amp; Time</span>
+          <span class="label">Requested date &amp; time</span>
           <span class="value">{AppointmentTime}</span>
         </div>
       </div>
-      <p>Please arrive 10 minutes before your scheduled time. If you need to cancel or reschedule, please do so at least 2 hours in advance through the AxivoraHMS portal.</p>
+      <p>If you need to cancel or change this request, please use the AxivoraHMS portal.</p>
     </div>
     <div class="footer">
       &copy; 2025 AxivoraHMS &middot; All rights reserved

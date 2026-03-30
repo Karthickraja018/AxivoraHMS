@@ -16,12 +16,12 @@ namespace Axivora.Services.Interfaces
         Task<bool> CancelAppointmentAsync(int appointmentId);
         Task<bool> CancelAppointmentAsync(int appointmentId, int callerUserId, string callerRole);
         Task<IEnumerable<AppointmentDto>> GetAppointmentsByDateRangeAsync(DateTime startDate, DateTime endDate);
-        Task<PaginationResponse<AppointmentDto>> GetMyAppointmentsAsync(int userId, PaginationParams paginationParams, string? status);
+        Task<PaginationResponse<AppointmentDto>> GetMyAppointmentsAsync(
+            int userId, PaginationParams paginationParams, PatientAppointmentsFilter? filter);
         Task<PaginationResponse<AppointmentDto>> GetDoctorAppointmentsAsync(int userId, PaginationParams paginationParams, DateTime? date);
         Task<AppointmentDto> UpdateAppointmentStatusAsync(int appointmentId, string statusName);
-        Task<AppointmentDto> UpdateAppointmentStatusAsync(int appointmentId, string statusName, string callerRole);
+        Task<AppointmentDto> UpdateAppointmentStatusAsync(int appointmentId, string statusName, int callerUserId, string callerRole);
         Task<AppointmentDto> BookAsync(CreateAppointmentDto dto, int callerUserId);
         Task<AppointmentDto> RescheduleAsync(int appointmentId, RescheduleAppointmentDto dto, int callerUserId, string callerRole);
-        Task DeleteAsync(int appointmentId, int callerUserId, string callerRole);
     }
 }

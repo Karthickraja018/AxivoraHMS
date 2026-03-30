@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Axivora.Data;
+using Axivora.Helpers;
 using Axivora.Models;
 using Axivora.Repositories.Interfaces;
 
@@ -49,6 +50,39 @@ namespace Axivora.Repositories
         /// </summary>
         private IQueryable<Appointment> PatientAppointmentsCore(int patientId) =>
             _context.Appointments.AsNoTracking().Where(a => a.PatientId == patientId);
+
+        private static IQueryable<Appointment> ApplyPatientMyFilters(
+            IQueryable<Appointment> query, PatientAppointmentsFilter filter)
+        {
+            if (!string.IsNullOrWhiteSpace(filter.Status) &&
+                !filter.Status.Equals("all", StringComparison.OrdinalIgnoreCase))
+                query = query.Where(a => a.Status != null && a.Status.StatusName == filter.Status);
+
+            if (filter.DoctorId.HasValue)
+                query = query.Where(a => a.DoctorId == filter.DoctorId.Value);
+
+            if (filter.FromDate.HasValue)
+            {
+                var start = filter.FromDate.Value.Date;
+                query = query.Where(a => a.AppointmentStart >= start);
+            }
+
+            if (filter.ToDate.HasValue)
+            {
+                var endExclusive = filter.ToDate.Value.Date.AddDays(1);
+                query = query.Where(a => a.AppointmentStart < endExclusive);
+            }
+
+            if (!string.IsNullOrWhiteSpace(filter.Search))
+            {
+                var term = filter.Search.Trim();
+                query = query.Where(a =>
+                    (a.Doctor != null && a.Doctor.FullName.Contains(term)) ||
+                    (a.Reason != null && a.Reason.Contains(term)));
+            }
+
+            return query;
+        }
 
         public async Task<IEnumerable<Appointment>> GetAllAsync() =>
             await BaseQuery().ToListAsync();
@@ -126,19 +160,16 @@ namespace Axivora.Repositories
                 .AsNoTracking()
                 .FirstOrDefaultAsync(d => d.UserId == userId && !d.IsDeleted);
 
-        public async Task<int> CountByPatientAsync(int patientId, string? status)
+        public async Task<int> CountByPatientAsync(int patientId, PatientAppointmentsFilter filter)
         {
-            var query = PatientAppointmentsCore(patientId);
-            if (!string.IsNullOrWhiteSpace(status) && !status.Equals("all", StringComparison.OrdinalIgnoreCase))
-                query = query.Where(a => a.Status != null && a.Status.StatusName == status);
+            var query = ApplyPatientMyFilters(PatientAppointmentsCore(patientId), filter);
             return await query.CountAsync();
         }
 
-        public async Task<IEnumerable<Appointment>> GetPagedByPatientAsync(int patientId, string? status, int skip, int take)
+        public async Task<IEnumerable<Appointment>> GetPagedByPatientAsync(
+            int patientId, PatientAppointmentsFilter filter, int skip, int take)
         {
-            var query = PatientAppointmentsCore(patientId);
-            if (!string.IsNullOrWhiteSpace(status) && !status.Equals("all", StringComparison.OrdinalIgnoreCase))
-                query = query.Where(a => a.Status != null && a.Status.StatusName == status);
+            var query = ApplyPatientMyFilters(PatientAppointmentsCore(patientId), filter);
             return await query
                 .Include(a => a.Patient)
                 .Include(a => a.Doctor)

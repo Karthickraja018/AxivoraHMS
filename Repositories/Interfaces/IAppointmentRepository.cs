@@ -1,3 +1,4 @@
+using Axivora.Helpers;
 using Axivora.Models;
 
 namespace Axivora.Repositories.Interfaces
@@ -18,8 +19,8 @@ namespace Axivora.Repositories.Interfaces
         Task<AppointmentStatus?> GetStatusByNameAsync(string statusName);
         Task<Patient?> GetPatientByUserIdAsync(int userId);
         Task<Doctor?> GetDoctorByUserIdAsync(int userId);
-        Task<int> CountByPatientAsync(int patientId, string? status);
-        Task<IEnumerable<Appointment>> GetPagedByPatientAsync(int patientId, string? status, int skip, int take);
+        Task<int> CountByPatientAsync(int patientId, PatientAppointmentsFilter filter);
+        Task<IEnumerable<Appointment>> GetPagedByPatientAsync(int patientId, PatientAppointmentsFilter filter, int skip, int take);
         Task<int> CountByDoctorAsync(int doctorId, DateTime? date);
         Task<IEnumerable<Appointment>> GetPagedByDoctorAsync(int doctorId, DateTime? date, int skip, int take);
         Task<AppointmentSlot?> GetSlotByIdAsync(int slotId);

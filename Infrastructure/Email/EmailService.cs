@@ -34,7 +34,7 @@ namespace Axivora.Infrastructure.Email
             var body = LoadTemplate("EmailVerificationOtp.html")
                 .Replace("{OTP}", otp);
 
-            Enqueue(email, "Email Verification – AxivoraHMS", body);
+            Enqueue(email, "Email Verification ï¿½ AxivoraHMS", body);
             return Task.CompletedTask;
         }
 
@@ -43,7 +43,7 @@ namespace Axivora.Infrastructure.Email
             var body = LoadTemplate("ForgotPassword.html")
                 .Replace("{ResetLink}", resetLink);
 
-            Enqueue(email, "Password Reset Request – AxivoraHMS", body);
+            Enqueue(email, "Password Reset Request ï¿½ AxivoraHMS", body);
             return Task.CompletedTask;
         }
 
@@ -54,7 +54,19 @@ namespace Axivora.Infrastructure.Email
                 .Replace("{TempPassword}", tempPassword)
                 .Replace("{Email}", email);
 
-            Enqueue(email, "Welcome to AxivoraHMS – Your Account is Ready", body);
+            Enqueue(email, "Welcome to AxivoraHMS ï¿½ Your Account is Ready", body);
+            return Task.CompletedTask;
+        }
+
+        public Task SendAppointmentRequestReceivedAsync(
+            string email, string patientName, string doctorName, DateTime appointmentTime)
+        {
+            var body = LoadTemplate("AppointmentRequestReceived.html")
+                .Replace("{PatientName}", patientName)
+                .Replace("{DoctorName}", doctorName)
+                .Replace("{AppointmentTime}", FormatTime(appointmentTime));
+
+            Enqueue(email, "Appointment request received ï¿½ AxivoraHMS", body);
             return Task.CompletedTask;
         }
 
@@ -66,7 +78,7 @@ namespace Axivora.Infrastructure.Email
                 .Replace("{DoctorName}", doctorName)
                 .Replace("{AppointmentTime}", FormatTime(appointmentTime));
 
-            Enqueue(email, "Appointment Confirmed – AxivoraHMS", body);
+            Enqueue(email, "Appointment Confirmed ï¿½ AxivoraHMS", body);
             return Task.CompletedTask;
         }
 
@@ -78,7 +90,7 @@ namespace Axivora.Infrastructure.Email
                 .Replace("{DoctorName}", doctorName)
                 .Replace("{AppointmentTime}", FormatTime(appointmentTime));
 
-            Enqueue(email, "Appointment Reminder – Tomorrow at AxivoraHMS", body);
+            Enqueue(email, "Appointment Reminder ï¿½ Tomorrow at AxivoraHMS", body);
             return Task.CompletedTask;
         }
 
@@ -90,7 +102,7 @@ namespace Axivora.Infrastructure.Email
                 .Replace("{DoctorName}", doctorName)
                 .Replace("{AppointmentTime}", FormatTime(appointmentTime));
 
-            Enqueue(email, "Consultation Completed – AxivoraHMS", body);
+            Enqueue(email, "Consultation Completed ï¿½ AxivoraHMS", body);
             return Task.CompletedTask;
         }
 

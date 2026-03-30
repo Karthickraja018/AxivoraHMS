@@ -5,6 +5,7 @@ namespace Axivora.DTOs
         public int ConsultationId { get; set; }
         public int AppointmentId { get; set; }
         public int PatientId { get; set; }
+        public int DoctorId { get; set; }
         public string ChiefComplaint { get; set; }
         public string Examination { get; set; }
         public string DiagnosisNotes { get; set; }

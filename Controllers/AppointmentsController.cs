@@ -29,7 +29,7 @@ namespace Axivora.Controllers
         /// Book an available slot. Patients only.
         /// Creates an appointment and atomically marks the slot as Booked.
         ///
-        /// FIX 11 — Idempotency: supply an optional <c>Idempotency-Key</c> header to make
+        /// FIX 11 ï¿½ Idempotency: supply an optional <c>Idempotency-Key</c> header to make
         /// this operation safe to retry. If the key has been seen before the stored response
         /// is returned without creating a duplicate appointment.
         /// </summary>
@@ -57,7 +57,7 @@ namespace Axivora.Controllers
                 var stored = await _idempotencyService.GetStoredResponseAsync(idempotencyKey);
                 if (stored is not null)
                 {
-                    // Return the previously stored response — no duplicate booking created
+                    // Return the previously stored response ï¿½ no duplicate booking created
                     var cached = JsonSerializer.Deserialize<AppointmentDto>(stored,
                         new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
                     return Ok(cached);
@@ -124,7 +124,7 @@ namespace Axivora.Controllers
         }
 
         /// <summary>
-        /// Get appointments for the currently authenticated patient with optional status filter.
+        /// Get appointments for the currently authenticated patient with optional filters.
         /// </summary>
         [HttpGet("me")]
         [Authorize(Roles = "Patient")]
@@ -133,10 +133,22 @@ namespace Axivora.Controllers
         [ProducesResponseType(StatusCodes.Status403Forbidden)]
         public async Task<ActionResult<PaginationResponse<AppointmentDto>>> GetMyAppointments(
             [FromQuery] PaginationParams paginationParams,
-            [FromQuery] string? status = null)
+            [FromQuery] string? search = null,
+            [FromQuery] int? doctorId = null,
+            [FromQuery] string? status = null,
+            [FromQuery] DateTime? fromDate = null,
+            [FromQuery] DateTime? toDate = null)
         {
             var userId = int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
-            var appointments = await _appointmentService.GetMyAppointmentsAsync(userId, paginationParams, status);
+            var filter = new PatientAppointmentsFilter
+            {
+                Search   = search,
+                DoctorId = doctorId,
+                Status   = status,
+                FromDate = fromDate,
+                ToDate   = toDate
+            };
+            var appointments = await _appointmentService.GetMyAppointmentsAsync(userId, paginationParams, filter);
             return Ok(appointments);
         }
 
@@ -192,10 +204,10 @@ namespace Axivora.Controllers
         }
 
         /// <summary>
-        /// Update appointment status. Doctor and Admin only.
+        /// Update appointment status. Patients may cancel (? Cancelled); doctors/admins drive the clinical lifecycle.
         /// </summary>
         [HttpPatch("{id:int}/status")]
-        [Authorize(Roles = "Admin,Doctor")]
+        [Authorize(Roles = "Admin,Doctor,Patient")]
         [ProducesResponseType(typeof(AppointmentDto), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -207,33 +219,22 @@ namespace Axivora.Controllers
             if (!ModelState.IsValid)
                 return BadRequest(ModelState);
 
-            var role = User.FindFirstValue(ClaimTypes.Role)!;
-            var appointment = await _appointmentService.UpdateAppointmentStatusAsync(id, statusDto.Status, role);
-            return Ok(appointment);
-        }
-
-        /// <summary>
-        /// Cancel (soft-delete) an appointment and release its slot. Patients, Doctors, and Admins.
-        /// </summary>
-        [HttpDelete("{id:int}")]
-        [ProducesResponseType(StatusCodes.Status204NoContent)]
-        [ProducesResponseType(StatusCodes.Status403Forbidden)]
-        [ProducesResponseType(StatusCodes.Status404NotFound)]
-        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-        public async Task<ActionResult> DeleteAppointment(int id)
-        {
             var userId = int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
             var role   = User.FindFirstValue(ClaimTypes.Role)!;
-
             try
             {
-                await _appointmentService.DeleteAsync(id, userId, role);
-                return NoContent();
+                var appointment = await _appointmentService.UpdateAppointmentStatusAsync(id, statusDto.Status, userId, role);
+                return Ok(appointment);
             }
             catch (UnauthorizedAccessException ex)
             {
                 return StatusCode(StatusCodes.Status403Forbidden, new { message = ex.Message });
             }
+            catch (InvalidOperationException ex)
+            {
+                return Conflict(new { message = ex.Message });
+            }
         }
+
     }
 }

@@ -19,7 +19,10 @@ namespace Axivora.Repositories
                 .Include(ot => ot.LabTest)
                 .Include(ot => ot.Consultation)
                     .ThenInclude(c => c!.Appointment)
-                        .ThenInclude(a => a!.Patient);
+                        .ThenInclude(a => a!.Patient)
+                .Include(ot => ot.Consultation)
+                    .ThenInclude(c => c!.Appointment)
+                        .ThenInclude(a => a!.Doctor);
 
         public async Task<OrderedTest?> GetOrderedTestByIdAsync(int orderedTestId) =>
             await OrderedTestWithNavigationsQuery()

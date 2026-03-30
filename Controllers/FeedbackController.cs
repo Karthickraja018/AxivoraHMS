@@ -83,10 +83,10 @@ namespace Axivora.Controllers
         }
 
         /// <summary>
-        /// Get all feedback for a doctor's consultations (Admin or that Doctor).
+        /// Get all feedback for a doctor's consultations (Admin, that Doctor, or Patient browsing directory).
         /// </summary>
         [HttpGet("doctor/{doctorId}")]
-        [Authorize(Roles = "Doctor,Admin")]
+        [Authorize(Roles = "Patient,Doctor,Admin")]
         [ProducesResponseType(typeof(IEnumerable<SessionFeedbackDto>), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         [ProducesResponseType(StatusCodes.Status403Forbidden)]

@@ -136,6 +136,8 @@ namespace Axivora.Services
                     throw new UnauthorizedAccessException("You can only view feedback for your own consultations.");
             }
 
+            // Patient + Admin: read-only directory view; no extra checks.
+
             var feedbacks = await _repository.GetByDoctorIdAsync(doctorId);
             return feedbacks.Select(MapToDto);
         }

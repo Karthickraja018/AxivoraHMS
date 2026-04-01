@@ -10,7 +10,7 @@ namespace Axivora.Helpers
 
         public int? DoctorId { get; set; }
 
-        /// <summary>Exact status name (e.g. Scheduled, Confirmed).</summary>
+        /// <summary>Exact status name (e.g. Scheduled, InProgress).</summary>
         public string? Status { get; set; }
 
         public DateTime? FromDate { get; set; }

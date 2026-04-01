@@ -148,14 +148,14 @@ namespace Axivora.Services
         }
 
         // Once an appointment is Completed, consultation notes should be locked (no further edits/additions).
-        private static readonly HashSet<string> _clinicalStatuses = ["Checked-In", "In Progress"];
+        private static readonly HashSet<string> _clinicalStatuses = ["InProgress"];
 
         private static void ValidateAppointmentStatusForConsultation(Appointment appointment)
         {
             var statusName = appointment.Status?.StatusName ?? string.Empty;
             if (!_clinicalStatuses.Contains(statusName))
                 throw new InvalidOperationException(
-                    "Consultation can only be created/edited for active appointments (Checked-In, In Progress).");
+                    "Consultation can only be created/edited for active appointments (InProgress).");
         }
 
         public async Task<ConsultationDto> UpdateConsultationAsync(int consultationId, UpdateConsultationDto updateConsultationDto)

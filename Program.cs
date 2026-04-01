@@ -52,6 +52,8 @@ namespace Axivora
             // Hosted services: email delivery worker + appointment reminder job
             builder.Services.AddHostedService<EmailBackgroundService>();
             builder.Services.AddHostedService<AppointmentReminderService>();
+            builder.Services.AddHostedService<AppointmentStatusSeederService>();
+            builder.Services.AddHostedService<AppointmentNoShowService>();
             // End email infrastructure
 
             // Configure JWT Authentication
@@ -117,7 +119,7 @@ namespace Axivora
             builder.Services.AddScoped<ISlotService, SlotService>();
             builder.Services.AddHostedService<AvailabilityGenerationBackgroundService>();
 
-            // FIX 11: Idempotency service ù prevents duplicate bookings on network retries
+            // FIX 11: Idempotency service ? prevents duplicate bookings on network retries
             builder.Services.AddScoped<IdempotencyService>();
 
             // Register Repositories

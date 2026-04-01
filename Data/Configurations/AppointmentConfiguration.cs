@@ -43,6 +43,10 @@ namespace Axivora.Data.Configurations
                    .IsRequired()
                    .HasDefaultValue(false);
 
+            builder.Property(apt => apt.Reminder2HoursSent)
+                   .IsRequired()
+                   .HasDefaultValue(false);
+
             builder.Property(apt => apt.CreatedAt)
                    .IsRequired()
                    .HasDefaultValueSql("SYSDATETIME()");

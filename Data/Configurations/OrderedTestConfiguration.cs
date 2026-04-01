@@ -30,6 +30,17 @@ namespace Axivora.Data.Configurations
 
             builder.Property(ot => ot.ResultDate);
 
+            builder.Property(ot => ot.ReportFilePath)
+                   .HasMaxLength(400);
+
+            builder.Property(ot => ot.ReportFileName)
+                   .HasMaxLength(255);
+
+            builder.Property(ot => ot.ReportContentType)
+                   .HasMaxLength(100);
+
+            builder.Property(ot => ot.ReportSizeBytes);
+
             // Indexes for quick lookup
             builder.HasIndex(ot => ot.ConsultationId)
                    .HasDatabaseName("IX_OrderedTests_ConsultationId");

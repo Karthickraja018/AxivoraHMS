@@ -68,6 +68,72 @@ namespace Axivora.Controllers
         }
 
         /// <summary>
+        /// Upload a lab report attachment file (PDF/image) for an ordered test (Admin, Doctor only).
+        /// </summary>
+        [HttpPost("{orderedTestId:int}/report-file")]
+        [Authorize(Roles = "Admin,Doctor")]
+        [RequestSizeLimit(10 * 1024 * 1024)]
+        [ProducesResponseType(typeof(LabResultDto), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
+        public async Task<ActionResult<LabResultDto>> UploadReportFile(
+            int orderedTestId,
+            [FromForm] IFormFile file,
+            [FromForm] string? summary,
+            CancellationToken ct)
+        {
+            var role   = User.FindFirstValue(ClaimTypes.Role)!;
+            var userId = int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+            try
+            {
+                var dto = await _labTestService.UploadReportFileAsync(orderedTestId, file, summary, userId, role, ct);
+                return Ok(dto);
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return NotFound(new { message = ex.Message });
+            }
+            catch (UnauthorizedAccessException)
+            {
+                return Forbid();
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Conflict(new { message = ex.Message });
+            }
+        }
+
+        /// <summary>
+        /// Download an uploaded lab report attachment file for an ordered test.
+        /// Patients can download only their own reports; Doctors their own; Admin all.
+        /// </summary>
+        [HttpGet("{orderedTestId:int}/report-file")]
+        [Authorize(Roles = "Patient,Doctor,Admin")]
+        [ProducesResponseType(typeof(FileStreamResult), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
+        public async Task<IActionResult> DownloadReportFile(int orderedTestId, CancellationToken ct)
+        {
+            var role   = User.FindFirstValue(ClaimTypes.Role)!;
+            var userId = int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+            try
+            {
+                var (stream, contentType, fileName) =
+                    await _labTestService.DownloadReportFileAsync(orderedTestId, userId, role, ct);
+                return File(stream, contentType, fileName);
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return NotFound(new { message = ex.Message });
+            }
+            catch (UnauthorizedAccessException)
+            {
+                return Forbid();
+            }
+        }
+
+        /// <summary>
         /// Get all lab test results for a patient (Admin, Doctor)
         /// </summary>
         [HttpGet("patient/{patientId}")]

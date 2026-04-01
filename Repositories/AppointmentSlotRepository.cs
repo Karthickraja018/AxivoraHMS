@@ -36,6 +36,15 @@ namespace Axivora.Repositories
                 .OrderBy(s => s.SlotStart)
                 .ToListAsync();
 
+        public async Task<IEnumerable<AppointmentSlot>> GetSlotsByDoctorAndDateAsync(
+            int doctorId, DateOnly date) =>
+            await _context.AppointmentSlots
+                .AsNoTracking()
+                .Where(s => s.DoctorId == doctorId &&
+                            s.AvailabilityDay!.Date == date)
+                .OrderBy(s => s.SlotStart)
+                .ToListAsync();
+
         public async Task<IEnumerable<AppointmentSlot>> GetSlotsByAvailabilityDayAsync(
             int availabilityDayId) =>
             await _context.AppointmentSlots

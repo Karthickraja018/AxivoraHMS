@@ -21,6 +21,12 @@ namespace Axivora.Models
 
         public DateTime OrderedAt { get; set; } = DateTime.UtcNow;
 
+        // Optional report attachment (e.g. PDF scan) uploaded by Doctor/Admin
+        public string? ReportFilePath { get; set; }
+        public string? ReportFileName { get; set; }
+        public string? ReportContentType { get; set; }
+        public long? ReportSizeBytes { get; set; }
+
         // Navigation properties
         public Consultation? Consultation { get; set; }
         public LabTest? LabTest { get; set; }

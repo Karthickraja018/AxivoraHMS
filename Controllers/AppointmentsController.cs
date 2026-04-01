@@ -204,6 +204,82 @@ namespace Axivora.Controllers
         }
 
         /// <summary>
+        /// Cancel an appointment. Patients can cancel their own Scheduled appointment.
+        /// Cannot cancel InProgress or Completed.
+        /// </summary>
+        [HttpPatch("{id:int}/cancel")]
+        [Authorize(Roles = "Admin,Doctor,Patient")]
+        [ProducesResponseType(typeof(AppointmentDto), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status409Conflict)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
+        public async Task<ActionResult<AppointmentDto>> CancelAppointment(int id)
+        {
+            var userId = int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+            var role   = User.FindFirstValue(ClaimTypes.Role)!;
+            try
+            {
+                var result = await _appointmentService.CancelAsync(id, userId, role);
+                return Ok(result);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return StatusCode(StatusCodes.Status403Forbidden, new { message = ex.Message });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Conflict(new { message = ex.Message });
+            }
+        }
+
+        /// <summary>
+        /// Start consultation (Scheduled -> InProgress). Doctor/Admin only.
+        /// </summary>
+        [HttpPatch("{id:int}/start")]
+        [Authorize(Roles = "Admin,Doctor")]
+        [ProducesResponseType(typeof(AppointmentDto), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status409Conflict)]
+        public async Task<ActionResult<AppointmentDto>> StartConsultation(int id)
+        {
+            var userId = int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+            var role   = User.FindFirstValue(ClaimTypes.Role)!;
+            try
+            {
+                var result = await _appointmentService.StartAsync(id, userId, role);
+                return Ok(result);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Conflict(new { message = ex.Message });
+            }
+        }
+
+        /// <summary>
+        /// Complete consultation (InProgress -> Completed). Doctor/Admin only.
+        /// </summary>
+        [HttpPatch("{id:int}/complete")]
+        [Authorize(Roles = "Admin,Doctor")]
+        [ProducesResponseType(typeof(AppointmentDto), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status409Conflict)]
+        public async Task<ActionResult<AppointmentDto>> CompleteConsultation(int id)
+        {
+            var userId = int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+            var role   = User.FindFirstValue(ClaimTypes.Role)!;
+            try
+            {
+                var result = await _appointmentService.CompleteAsync(id, userId, role);
+                return Ok(result);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Conflict(new { message = ex.Message });
+            }
+        }
+
+        /// <summary>
         /// Update appointment status. Patients may cancel (? Cancelled); doctors/admins drive the clinical lifecycle.
         /// </summary>
         [HttpPatch("{id:int}/status")]

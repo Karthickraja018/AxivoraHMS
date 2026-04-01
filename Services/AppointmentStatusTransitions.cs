@@ -3,7 +3,7 @@ namespace Axivora.Services
     /// <summary>
     /// Defines and enforces the appointment status state machine.
     ///
-    /// Terminal states (Completed, Cancelled, No-Show) cannot be left once entered.
+    /// Terminal states (Completed, Cancelled, NoShow) cannot be left once entered.
     /// Transitions that are not listed in the matrix for a given role are rejected
     /// with <see cref="InvalidOperationException"/>.
     /// </summary>
@@ -14,7 +14,7 @@ namespace Axivora.Services
         [
             "Completed",
             "Cancelled",
-            "No-Show"
+            "NoShow"
         ];
 
         // Allowed transitions per role
@@ -23,35 +23,17 @@ namespace Axivora.Services
         //        stored as a set of roles that ARE allowed to make this move.
         private static readonly Dictionary<(string From, string To), HashSet<string>> AllowedTransitions = new()
         {
-            // Scheduled ? Confirmed: Doctor / Admin only
-            [("Scheduled", "Confirmed")]    = ["Doctor", "Admin"],
+            // Scheduled -> InProgress: Doctor / Admin only
+            [("Scheduled", "InProgress")] = ["Doctor", "Admin"],
 
-            // Confirmed ? Checked-In: any authenticated role
-            [("Confirmed", "Checked-In")]   = ["Patient", "Doctor", "Admin"],
+            // InProgress -> Completed: Doctor / Admin only
+            [("InProgress", "Completed")] = ["Doctor", "Admin"],
 
-            // Checked-In ? In Progress: Doctor / Admin only
-            [("Checked-In", "In Progress")] = ["Doctor", "Admin"],
+            // Scheduled -> Cancelled: all roles (ownership enforced separately)
+            [("Scheduled", "Cancelled")]  = ["Patient", "Doctor", "Admin"],
 
-            // In Progress ? Completed: Doctor / Admin only
-            [("In Progress", "Completed")]  = ["Doctor", "Admin"],
-
-            // Any non-terminal ? Cancelled: all roles (ownership enforced separately)
-            [("Scheduled",   "Cancelled")]  = ["Patient", "Doctor", "Admin"],
-            [("Confirmed",   "Cancelled")]  = ["Patient", "Doctor", "Admin"],
-            [("Checked-In",  "Cancelled")]  = ["Patient", "Doctor", "Admin"],
-            [("In Progress", "Cancelled")]  = ["Patient", "Doctor", "Admin"],
-            [("Rescheduled", "Cancelled")]  = ["Patient", "Doctor", "Admin"],
-
-            // Any non-terminal ? No-Show: Doctor / Admin only
-            [("Scheduled",   "No-Show")]    = ["Doctor", "Admin"],
-            [("Confirmed",   "No-Show")]    = ["Doctor", "Admin"],
-            [("Checked-In",  "No-Show")]    = ["Doctor", "Admin"],
-
-            // Any non-terminal ? Rescheduled: Doctor / Admin only
-            [("Scheduled",   "Rescheduled")]  = ["Doctor", "Admin"],
-            [("Confirmed",   "Rescheduled")]  = ["Doctor", "Admin"],
-            [("Checked-In",  "Rescheduled")]  = ["Doctor", "Admin"],
-            [("In Progress", "Rescheduled")]  = ["Doctor", "Admin"],
+            // Scheduled -> NoShow: Doctor / Admin only (primarily for background job / ops)
+            [("Scheduled", "NoShow")]     = ["Doctor", "Admin"],
         };
 
         /// <summary>

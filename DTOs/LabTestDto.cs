@@ -17,6 +17,7 @@ namespace Axivora.DTOs
         public string TestType { get; set; } = null!;
         public string? Unit { get; set; }
         public string? ReferenceRange { get; set; }
+        public bool HasReportFile { get; set; }
     }
 
     public class LabResultUpdateDto
@@ -45,10 +46,12 @@ namespace Axivora.DTOs
     /// <summary>Patient-facing view of their own lab results.</summary>
     public class PatientLabResultDto
     {
+        public int OrderedTestId { get; set; }
         public string LabTestName { get; set; } = null!;
         public string? Result { get; set; }
         public DateTime OrderedDate { get; set; }
         public DateTime? ResultDate { get; set; }
         public string DoctorName { get; set; } = null!;
+        public bool HasReportFile { get; set; }
     }
 }

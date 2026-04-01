@@ -20,6 +20,7 @@ namespace Axivora.Repositories
                 .Include(ot => ot.Consultation)
                     .ThenInclude(c => c!.Appointment)
                         .ThenInclude(a => a!.Patient)
+                            .ThenInclude(p => p!.User)
                 .Include(ot => ot.Consultation)
                     .ThenInclude(c => c!.Appointment)
                         .ThenInclude(a => a!.Doctor);

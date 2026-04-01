@@ -29,6 +29,10 @@ namespace Axivora.Repositories.Interfaces
         Task AddAsync(Appointment appointment);
         Task AddAuditLogAsync(AuditLog auditLog);
         Task SaveChangesAsync();
+        Task<List<Appointment>> GetOverdueScheduledAppointmentsAsync(
+            int scheduledStatusId,
+            DateTime utcNow,
+            CancellationToken ct);
         Task BeginTransactionAsync();
         Task CommitTransactionAsync();
         Task RollbackTransactionAsync();

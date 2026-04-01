@@ -94,6 +94,18 @@ namespace Axivora.Infrastructure.Email
             return Task.CompletedTask;
         }
 
+        public Task SendAppointmentReminder2HoursAsync(
+            string email, string patientName, string doctorName, DateTime appointmentTime)
+        {
+            var body = LoadTemplate("AppointmentReminder2Hours.html")
+                .Replace("{PatientName}", patientName)
+                .Replace("{DoctorName}", doctorName)
+                .Replace("{AppointmentTime}", FormatTime(appointmentTime));
+
+            Enqueue(email, "Appointment Reminder � In 2 hours at AxivoraHMS", body);
+            return Task.CompletedTask;
+        }
+
         public Task SendAppointmentCompletedAsync(
             string email, string patientName, string doctorName, DateTime appointmentTime)
         {
@@ -103,6 +115,19 @@ namespace Axivora.Infrastructure.Email
                 .Replace("{AppointmentTime}", FormatTime(appointmentTime));
 
             Enqueue(email, "Consultation Completed � AxivoraHMS", body);
+            return Task.CompletedTask;
+        }
+
+        public Task SendLabResultUploadedAsync(
+            string email, string patientName, string doctorName, string testName, DateTime resultAt)
+        {
+            var body = LoadTemplate("LabResultUploaded.html")
+                .Replace("{PatientName}", patientName)
+                .Replace("{DoctorName}", doctorName)
+                .Replace("{TestName}", testName)
+                .Replace("{ResultTime}", FormatTime(resultAt));
+
+            Enqueue(email, "Lab Result Available � AxivoraHMS", body);
             return Task.CompletedTask;
         }
 

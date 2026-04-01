@@ -6,6 +6,7 @@ namespace Axivora.Repositories.Interfaces
     {
         Task<AppointmentSlot?> GetByIdAsync(int id);
         Task<IEnumerable<AppointmentSlot>> GetAvailableSlotsByDoctorAndDateAsync(int doctorId, DateOnly date);
+        Task<IEnumerable<AppointmentSlot>> GetSlotsByDoctorAndDateAsync(int doctorId, DateOnly date);
         Task<IEnumerable<AppointmentSlot>> GetSlotsByAvailabilityDayAsync(int availabilityDayId);
         Task<bool> AnyExistForDayAsync(int availabilityDayId);
         Task AddRangeAsync(IEnumerable<AppointmentSlot> slots);

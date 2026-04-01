@@ -38,7 +38,7 @@ namespace Axivora.Services
             var now = DateTime.UtcNow;
             var completedStatuses = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
             {
-                "Completed", "Cancelled", "No-Show"
+                "Completed", "Cancelled", "NoShow"
             };
 
             var upcoming = appointments

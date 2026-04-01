@@ -23,5 +23,10 @@ namespace Axivora.Services.Interfaces
         Task<AppointmentDto> UpdateAppointmentStatusAsync(int appointmentId, string statusName, int callerUserId, string callerRole);
         Task<AppointmentDto> BookAsync(CreateAppointmentDto dto, int callerUserId);
         Task<AppointmentDto> RescheduleAsync(int appointmentId, RescheduleAppointmentDto dto, int callerUserId, string callerRole);
+
+        Task<AppointmentDto> CancelAsync(int appointmentId, int callerUserId, string callerRole);
+        Task<AppointmentDto> StartAsync(int appointmentId, int callerUserId, string callerRole);
+        Task<AppointmentDto> CompleteAsync(int appointmentId, int callerUserId, string callerRole);
+        Task<int> AutoMarkNoShowsAsync(DateTime utcNow, CancellationToken ct);
     }
 }

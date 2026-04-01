@@ -1,11 +1,25 @@
 using Axivora.DTOs;
 using Axivora.Helpers;
+using Microsoft.AspNetCore.Http;
 
 namespace Axivora.Services.Interfaces
 {
     public interface ILabTestService
     {
         Task<LabResultDto> UploadResultAsync(int orderedTestId, LabResultUpdateDto dto);
+        Task<LabResultDto> UploadReportFileAsync(
+            int orderedTestId,
+            IFormFile file,
+            string? summary,
+            int callerUserId,
+            string callerRole,
+            CancellationToken ct);
+
+        Task<(Stream Stream, string ContentType, string FileName)> DownloadReportFileAsync(
+            int orderedTestId,
+            int callerUserId,
+            string callerRole,
+            CancellationToken ct);
         Task<IEnumerable<LabResultDto>> GetResultsByPatientAsync(int patientId);
         Task<IEnumerable<LabResultDto>> GetResultsByConsultationAsync(int consultationId);
 

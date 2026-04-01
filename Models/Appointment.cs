@@ -39,6 +39,12 @@ namespace Axivora.Models
         /// </summary>
         public bool ReminderSent { get; set; }
 
+        /// <summary>
+        /// Set to true by <see cref="Services.BackgroundServices.AppointmentReminderService"/> once
+        /// the 2-hour reminder email has been enqueued.
+        /// </summary>
+        public bool Reminder2HoursSent { get; set; }
+
         /// <summary>Optimistic concurrency token – prevents conflicting concurrent updates.</summary>
         [Timestamp]
         public byte[] RowVersion { get; set; } = null!;

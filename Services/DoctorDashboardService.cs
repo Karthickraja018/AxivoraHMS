@@ -38,7 +38,7 @@ namespace Axivora.Services
 
             var terminalStatuses = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
             {
-                "Completed", "Cancelled", "No-Show"
+                "Completed", "Cancelled", "NoShow"
             };
 
             var nextAppt = todayAppointments
@@ -51,7 +51,7 @@ namespace Axivora.Services
 
             var todayPatientsCount = todayAppointments
                 .Where(a => !string.Equals(a.Status, "Cancelled", StringComparison.OrdinalIgnoreCase) &&
-                            !string.Equals(a.Status, "No-Show", StringComparison.OrdinalIgnoreCase))
+                            !string.Equals(a.Status, "NoShow", StringComparison.OrdinalIgnoreCase))
                 .Select(a => a.PatientId)
                 .Distinct()
                 .Count();
@@ -60,9 +60,8 @@ namespace Axivora.Services
             var pendingConsultationAppointments = todayAppointments
                 .Where(a =>
                     !terminalStatuses.Contains(a.Status) &&
-                    (string.Equals(a.Status, "Checked-In", StringComparison.OrdinalIgnoreCase) ||
-                     string.Equals(a.Status, "In Progress", StringComparison.OrdinalIgnoreCase) ||
-                     (string.Equals(a.Status, "Confirmed", StringComparison.OrdinalIgnoreCase) && a.AppointmentStart <= DateTime.UtcNow)))
+                    (string.Equals(a.Status, "InProgress", StringComparison.OrdinalIgnoreCase) ||
+                     (string.Equals(a.Status, "Scheduled", StringComparison.OrdinalIgnoreCase) && a.AppointmentStart <= DateTime.UtcNow)))
                 .OrderBy(a => a.AppointmentStart)
                 .Take(8)
                 .ToList();

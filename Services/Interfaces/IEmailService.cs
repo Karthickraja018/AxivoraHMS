@@ -25,7 +25,13 @@ namespace Axivora.Services.Interfaces
         /// <summary>Sends a 24-hour reminder before the scheduled appointment.</summary>
         Task SendAppointmentReminderAsync(string email, string patientName, string doctorName, DateTime appointmentTime);
 
+        /// <summary>Sends a 2-hour reminder before the scheduled appointment.</summary>
+        Task SendAppointmentReminder2HoursAsync(string email, string patientName, string doctorName, DateTime appointmentTime);
+
         /// <summary>Notifies the patient that their consultation has been completed.</summary>
         Task SendAppointmentCompletedAsync(string email, string patientName, string doctorName, DateTime appointmentTime);
+
+        /// <summary>Notifies the patient that a lab result/report has been uploaded.</summary>
+        Task SendLabResultUploadedAsync(string email, string patientName, string doctorName, string testName, DateTime resultAt);
     }
 }

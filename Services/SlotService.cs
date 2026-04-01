@@ -30,7 +30,7 @@ namespace Axivora.Services
         }
 
         /// <summary>
-        /// Returns all Available slots for a doctor on a given date.
+        /// Returns all slots for a doctor on a given date (Available/Booked/Blocked/Cancelled).
         /// Generates slots on demand if the availability day exists but has no slots yet,
         /// so callers never receive an empty list due to a missed background run.
         /// </summary>
@@ -39,7 +39,7 @@ namespace Axivora.Services
             // Trigger on-demand generation before querying â€” idempotent if slots already exist
             await EnsureSlotsGeneratedAsync(doctorId, date);
 
-            var slots = await _slotRepository.GetAvailableSlotsByDoctorAndDateAsync(doctorId, date);
+            var slots = await _slotRepository.GetSlotsByDoctorAndDateAsync(doctorId, date);
             return _mapper.Map<IEnumerable<SlotDto>>(slots);
         }
 

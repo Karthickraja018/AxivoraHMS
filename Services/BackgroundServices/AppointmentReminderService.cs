@@ -17,9 +17,8 @@ namespace Axivora.Services.BackgroundServices
         private readonly IServiceScopeFactory _scopeFactory;
         private readonly ILogger<AppointmentReminderService> _logger;
 
-        private static readonly TimeSpan RunInterval   = TimeSpan.FromHours(1);
-        private static readonly TimeSpan ReminderLeadTime = TimeSpan.FromHours(24);
-        private static readonly TimeSpan ReminderWindow   = TimeSpan.FromMinutes(30);
+        private static readonly TimeSpan RunInterval = TimeSpan.FromMinutes(10);
+        private static readonly TimeSpan ReminderWindow = TimeSpan.FromMinutes(15);
 
         public AppointmentReminderService(
             IServiceScopeFactory scopeFactory,
@@ -66,56 +65,86 @@ namespace Axivora.Services.BackgroundServices
                 var db                 = scope.ServiceProvider.GetRequiredService<AxivoraDbContext>();
                 var emailService       = scope.ServiceProvider.GetRequiredService<IEmailService>();
 
-                var windowStart = DateTime.UtcNow.Add(ReminderLeadTime - ReminderWindow);
-                var windowEnd   = DateTime.UtcNow.Add(ReminderLeadTime + ReminderWindow);
+                var now = DateTime.UtcNow;
+                var window24Start = now.AddHours(24) - ReminderWindow;
+                var window24End   = now.AddHours(24) + ReminderWindow;
+                var window2Start  = now.AddHours(2)  - ReminderWindow;
+                var window2End    = now.AddHours(2)  + ReminderWindow;
 
-                // Find appointments in the reminder window that haven't been reminded yet
-                var appointments = await db.Appointments
-                    .Include(a => a.Patient)
-                        .ThenInclude(p => p!.User)
+                // 24h reminders
+                var appts24 = await db.Appointments
+                    .Include(a => a.Patient).ThenInclude(p => p!.User)
                     .Include(a => a.Doctor)
+                    .Include(a => a.Status)
                     .Where(a =>
                         !a.IsDeleted &&
                         !a.ReminderSent &&
-                        a.AppointmentStart >= windowStart &&
-                        a.AppointmentStart <= windowEnd)
+                        a.Status != null && a.Status.StatusName == "Scheduled" &&
+                        a.AppointmentStart >= window24Start &&
+                        a.AppointmentStart <= window24End)
                     .ToListAsync(stoppingToken);
 
-                if (appointments.Count == 0)
+                // 2h reminders
+                var appts2 = await db.Appointments
+                    .Include(a => a.Patient).ThenInclude(p => p!.User)
+                    .Include(a => a.Doctor)
+                    .Include(a => a.Status)
+                    .Where(a =>
+                        !a.IsDeleted &&
+                        !a.Reminder2HoursSent &&
+                        a.Status != null && a.Status.StatusName == "Scheduled" &&
+                        a.AppointmentStart >= window2Start &&
+                        a.AppointmentStart <= window2End)
+                    .ToListAsync(stoppingToken);
+
+                if (appts24.Count == 0 && appts2.Count == 0)
                 {
                     _logger.LogDebug("No pending appointment reminders found.");
                     return;
                 }
 
-                _logger.LogInformation("Sending {Count} appointment reminder(s).", appointments.Count);
+                _logger.LogInformation("Sending appointment reminders: {Count24} (24h), {Count2} (2h).",
+                    appts24.Count, appts2.Count);
 
-                foreach (var appointment in appointments)
+                foreach (var appointment in appts24)
                 {
                     try
                     {
                         var patientEmail = appointment.Patient?.User?.Email;
-                        var patientName  = appointment.Patient?.FullName ?? "Patient";
-                        var doctorName   = appointment.Doctor?.FullName  ?? "Doctor";
-
-                        if (string.IsNullOrWhiteSpace(patientEmail))
-                        {
-                            _logger.LogWarning(
-                                "Appointment {Id}: patient email not found, skipping reminder.",
-                                appointment.AppointmentId);
-                            continue;
-                        }
+                        if (string.IsNullOrWhiteSpace(patientEmail)) continue;
 
                         await emailService.SendAppointmentReminderAsync(
-                            patientEmail, patientName, doctorName, appointment.AppointmentStart);
+                            patientEmail,
+                            appointment.Patient?.FullName ?? "Patient",
+                            appointment.Doctor?.FullName ?? "Doctor",
+                            appointment.AppointmentStart);
 
-                        // Mark as sent so we don't send it again next hour
                         appointment.ReminderSent = true;
                     }
                     catch (Exception ex)
                     {
-                        _logger.LogError(ex,
-                            "Failed to enqueue reminder for appointment {Id}.",
-                            appointment.AppointmentId);
+                        _logger.LogError(ex, "Failed to enqueue 24h reminder for appointment {Id}.", appointment.AppointmentId);
+                    }
+                }
+
+                foreach (var appointment in appts2)
+                {
+                    try
+                    {
+                        var patientEmail = appointment.Patient?.User?.Email;
+                        if (string.IsNullOrWhiteSpace(patientEmail)) continue;
+
+                        await emailService.SendAppointmentReminder2HoursAsync(
+                            patientEmail,
+                            appointment.Patient?.FullName ?? "Patient",
+                            appointment.Doctor?.FullName ?? "Doctor",
+                            appointment.AppointmentStart);
+
+                        appointment.Reminder2HoursSent = true;
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Failed to enqueue 2h reminder for appointment {Id}.", appointment.AppointmentId);
                     }
                 }
 

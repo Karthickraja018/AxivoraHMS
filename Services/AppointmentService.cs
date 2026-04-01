@@ -10,6 +10,22 @@ namespace Axivora.Services
 {
     public class AppointmentService : IAppointmentService
     {
+        private static readonly TimeSpan SlotBookingCutoff = TimeSpan.FromSeconds(0);
+        private static readonly string[] LegacyScheduledLikeStatuses =
+        [
+            "Scheduled",
+            "Confirmed",
+            "Checked-In",
+            "Rescheduled"
+        ];
+
+        private static string NormalizeStatus(string s) =>
+            string.IsNullOrWhiteSpace(s)
+                ? string.Empty
+                : s.Trim()
+                    .Replace(" ", string.Empty, StringComparison.Ordinal)
+                    .Replace("-", string.Empty, StringComparison.Ordinal);
+
         private readonly IAppointmentRepository _repository;
         private readonly IMapper _mapper;
         private readonly ILogger<AppointmentService> _logger;
@@ -192,11 +208,16 @@ namespace Axivora.Services
                 return await GetAppointmentByIdAsync(appointmentId);
             }
 
+            if (statusName == "NoShow")
+            {
+                await ApplyNoShowWithSlotReleaseAsync(appointment);
+                _logger.LogInformation(
+                    "Appointment {AppointmentId} marked NoShow (status-only, slot released).", appointmentId);
+                return await GetAppointmentByIdAsync(appointmentId);
+            }
+
             appointment.StatusId = targetStatus.StatusId;
             await _repository.SaveChangesAsync();
-
-            if (statusName == "Confirmed" && currentStatusName == "Scheduled")
-                await SendAppointmentConfirmedEmailAsync(appointment);
 
             return await GetAppointmentByIdAsync(appointmentId);
         }
@@ -230,19 +251,36 @@ namespace Axivora.Services
             }
         }
 
-        private async Task SendAppointmentConfirmedEmailAsync(Appointment appointment)
+        private async Task ApplyNoShowWithSlotReleaseAsync(Appointment appointment)
         {
-            var patientWithUser = await _repository.GetPatientWithUserAsync(appointment.PatientId);
-            var doctorName      = await _repository.GetDoctorFullNameAsync(appointment.DoctorId);
-            if (patientWithUser?.User?.Email is string patientEmail)
+            await _repository.BeginTransactionAsync();
+            try
             {
-                await _emailService.SendAppointmentConfirmationAsync(
-                    patientEmail,
-                    patientWithUser.FullName,
-                    doctorName ?? "Doctor",
-                    appointment.AppointmentStart);
+                if (appointment.SlotId.HasValue)
+                {
+                    var slot = await _repository.GetSlotByIdAsync(appointment.SlotId.Value);
+                    if (slot is not null)
+                    {
+                        slot.Status = SlotStatus.Available;
+                        slot.AppointmentId = null;
+                    }
+                }
+
+                var noShowStatus = await _repository.GetStatusByNameAsync("NoShow")
+                    ?? throw new InvalidOperationException("Appointment status 'NoShow' is not configured.");
+                appointment.StatusId = noShowStatus.StatusId;
+
+                await _repository.SaveChangesAsync();
+                await _repository.CommitTransactionAsync();
+            }
+            catch
+            {
+                await _repository.RollbackTransactionAsync();
+                throw;
             }
         }
+
+        // Confirmation step removed: booking is direct and starts in Scheduled.
 
         // Cancel (legacy)
 
@@ -293,6 +331,11 @@ namespace Axivora.Services
             {
                 var slot = await _repository.GetSlotByIdAsync(dto.SlotId)
                     ?? throw new KeyNotFoundException($"Slot with ID {dto.SlotId} not found.");
+
+                // Prevent past-slot bookings (server authoritative)
+                var now = DateTime.UtcNow;
+                if (slot.SlotStart <= now + SlotBookingCutoff)
+                    throw new InvalidOperationException("Cannot book a past time slot.");
 
                 if (slot.Status != SlotStatus.Available)
                     throw new InvalidOperationException(
@@ -355,6 +398,151 @@ namespace Axivora.Services
             }
         }
 
+        // New production booking flow endpoints
+
+        public async Task<AppointmentDto> CancelAsync(int appointmentId, int callerUserId, string callerRole)
+        {
+            var appointment = await _repository.GetByIdAsync(appointmentId)
+                ?? throw new KeyNotFoundException($"Appointment with ID {appointmentId} not found.");
+
+            await EnforceOwnershipAsync(appointment, callerUserId, callerRole);
+
+            var currentRaw = appointment.Status?.StatusName ?? string.Empty;
+            var current = NormalizeStatus(currentRaw);
+            if (current is "Completed" or "InProgress")
+                throw new InvalidOperationException($"Cannot cancel an appointment that is InProgress or Completed. Current status: '{currentRaw}'.");
+
+            var cancelled = await _repository.GetStatusByNameAsync("Cancelled")
+                ?? throw new InvalidOperationException("Appointment status 'Cancelled' is not configured.");
+
+            await _repository.BeginTransactionAsync();
+            try
+            {
+                if (appointment.SlotId.HasValue)
+                {
+                    var slot = await _repository.GetSlotByIdAsync(appointment.SlotId.Value);
+                    if (slot is not null)
+                    {
+                        slot.Status        = SlotStatus.Available;
+                        slot.AppointmentId = null;
+                    }
+                }
+
+                appointment.StatusId = cancelled.StatusId;
+                await _repository.SaveChangesAsync();
+                await _repository.CommitTransactionAsync();
+                return await GetAppointmentByIdAsync(appointmentId);
+            }
+            catch
+            {
+                await _repository.RollbackTransactionAsync();
+                throw;
+            }
+        }
+
+        public async Task<AppointmentDto> StartAsync(int appointmentId, int callerUserId, string callerRole)
+        {
+            var appointment = await _repository.GetByIdAsync(appointmentId)
+                ?? throw new KeyNotFoundException($"Appointment with ID {appointmentId} not found.");
+
+            await EnforceOwnershipAsync(appointment, callerUserId, callerRole);
+            if (callerRole is not ("Doctor" or "Admin"))
+                throw new UnauthorizedAccessException("Only Doctor or Admin can start a consultation.");
+
+            var currentRaw = appointment.Status?.StatusName ?? string.Empty;
+            var current = NormalizeStatus(currentRaw);
+            var currentIsScheduledLike = LegacyScheduledLikeStatuses
+                .Any(x => NormalizeStatus(x).Equals(current, StringComparison.OrdinalIgnoreCase));
+
+            if (!currentIsScheduledLike)
+            {
+                if (current.Equals("InProgress", StringComparison.OrdinalIgnoreCase))
+                    return await GetAppointmentByIdAsync(appointmentId); // idempotent start
+
+                throw new InvalidOperationException(
+                    $"Only Scheduled appointments can be started. Current status: '{currentRaw}'.");
+            }
+
+            var inProgress = await _repository.GetStatusByNameAsync("InProgress")
+                ?? throw new InvalidOperationException("Appointment status 'InProgress' is not configured.");
+
+            appointment.StatusId = inProgress.StatusId;
+            await _repository.SaveChangesAsync();
+            return await GetAppointmentByIdAsync(appointmentId);
+        }
+
+        public async Task<AppointmentDto> CompleteAsync(int appointmentId, int callerUserId, string callerRole)
+        {
+            var appointment = await _repository.GetByIdAsync(appointmentId)
+                ?? throw new KeyNotFoundException($"Appointment with ID {appointmentId} not found.");
+
+            await EnforceOwnershipAsync(appointment, callerUserId, callerRole);
+            if (callerRole is not ("Doctor" or "Admin"))
+                throw new UnauthorizedAccessException("Only Doctor or Admin can complete a consultation.");
+
+            var currentRaw = appointment.Status?.StatusName ?? string.Empty;
+            var current = NormalizeStatus(currentRaw);
+            if (!current.Equals("InProgress", StringComparison.OrdinalIgnoreCase))
+            {
+                if (current.Equals("Completed", StringComparison.OrdinalIgnoreCase))
+                    return await GetAppointmentByIdAsync(appointmentId); // idempotent complete
+
+                throw new InvalidOperationException(
+                    $"Only InProgress appointments can be completed. Current status: '{currentRaw}'.");
+            }
+
+            var completed = await _repository.GetStatusByNameAsync("Completed")
+                ?? throw new InvalidOperationException("Appointment status 'Completed' is not configured.");
+
+            appointment.StatusId = completed.StatusId;
+            await _repository.SaveChangesAsync();
+            return await GetAppointmentByIdAsync(appointmentId);
+        }
+
+        /// <summary>
+        /// Auto marks overdue Scheduled appointments as NoShow and releases the slot.
+        /// Intended for background jobs.
+        /// </summary>
+        public async Task<int> AutoMarkNoShowsAsync(DateTime utcNow, CancellationToken ct)
+        {
+            var noShow = await _repository.GetStatusByNameAsync("NoShow")
+                ?? throw new InvalidOperationException("Appointment status 'NoShow' is not configured.");
+            var scheduled = await _repository.GetStatusByNameAsync("Scheduled")
+                ?? throw new InvalidOperationException("Appointment status 'Scheduled' is not configured.");
+
+            await _repository.BeginTransactionAsync();
+            try
+            {
+                var overdue = await _repository.GetOverdueScheduledAppointmentsAsync(
+                    scheduled.StatusId, utcNow, ct);
+
+                if (overdue.Count == 0)
+                {
+                    await _repository.CommitTransactionAsync();
+                    return 0;
+                }
+
+                foreach (var appt in overdue)
+                {
+                    appt.StatusId = noShow.StatusId;
+                    if (appt.Slot is not null)
+                    {
+                        appt.Slot.Status        = SlotStatus.Available;
+                        appt.Slot.AppointmentId = null;
+                    }
+                }
+
+                await _repository.SaveChangesAsync();
+                await _repository.CommitTransactionAsync();
+                return overdue.Count;
+            }
+            catch
+            {
+                await _repository.RollbackTransactionAsync();
+                throw;
+            }
+        }
+
         /// <summary>
         /// Reschedules an appointment to a new slot.
         ///
@@ -378,8 +566,8 @@ namespace Axivora.Services
             }
 
             var currentStatus = appointment.Status?.StatusName ?? string.Empty;
-            if (currentStatus is "Completed" or "Cancelled")
-                throw new InvalidOperationException("Cannot reschedule a completed or cancelled appointment.");
+            if (currentStatus is "InProgress" or "Completed" or "Cancelled" or "NoShow")
+                throw new InvalidOperationException("Cannot reschedule an appointment that is InProgress, Completed, Cancelled, or NoShow.");
 
             var newSlot = await _repository.GetSlotByIdAsync(dto.NewSlotId)
                 ?? throw new KeyNotFoundException($"Slot with ID {dto.NewSlotId} not found.");

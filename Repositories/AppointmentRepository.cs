@@ -215,6 +215,25 @@ namespace Axivora.Repositories
                 .Select(d => d.FullName)
                 .FirstOrDefaultAsync();
 
+        /// <summary>
+        /// Returns tracked overdue appointments in Scheduled state so callers can update them
+        /// (e.g. auto NoShow) and atomically release slots.
+        /// </summary>
+        public async Task<List<Appointment>> GetOverdueScheduledAppointmentsAsync(
+            int scheduledStatusId,
+            DateTime utcNow,
+            CancellationToken ct)
+        {
+            return await _context.Appointments
+                .Include(a => a.Slot)
+                .Include(a => a.Status)
+                .Where(a =>
+                    !a.IsDeleted &&
+                    a.StatusId == scheduledStatusId &&
+                    a.AppointmentEnd < utcNow)
+                .ToListAsync(ct);
+        }
+
         public async Task AddAsync(Appointment appointment) =>
             await _context.Appointments.AddAsync(appointment);
 

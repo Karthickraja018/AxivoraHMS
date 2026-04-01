@@ -19,6 +19,8 @@ namespace Axivora.Models
         [DataType(DataType.DateTime)]
         public DateTime? ResultDate { get; set; }
 
+        public DateTime OrderedAt { get; set; } = DateTime.UtcNow;
+
         // Navigation properties
         public Consultation? Consultation { get; set; }
         public LabTest? LabTest { get; set; }

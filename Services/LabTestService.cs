@@ -58,8 +58,12 @@ namespace Axivora.Services
 
             var dtos = items.Select(lt => new LabTestCatalogueDto
             {
-                LabTestId = lt.LabTestId,
-                TestName  = lt.TestName
+                LabTestId      = lt.LabTestId,
+                TestName       = lt.TestName,
+                Description    = lt.Description,
+                TestType       = lt.TestType,
+                Unit           = lt.Unit,
+                ReferenceRange = lt.ReferenceRange
             }).ToList();
 
             return new PaginationResponse<LabTestCatalogueDto>(dtos, totalCount, pageNumber, pageSize);
@@ -74,8 +78,12 @@ namespace Axivora.Services
 
             return new LabTestCatalogueDto
             {
-                LabTestId = labTest.LabTestId,
-                TestName  = labTest.TestName
+                LabTestId      = labTest.LabTestId,
+                TestName       = labTest.TestName,
+                Description    = labTest.Description,
+                TestType       = labTest.TestType,
+                Unit           = labTest.Unit,
+                ReferenceRange = labTest.ReferenceRange
             };
         }
 
@@ -88,8 +96,12 @@ namespace Axivora.Services
             Status         = ot.Status,
             Result         = ot.Result,
             ResultDate     = ot.ResultDate,
+            OrderedAt      = ot.OrderedAt,
             PatientId      = ot.Consultation?.Appointment?.PatientId ?? 0,
-            PatientName    = ot.Consultation?.Appointment?.Patient?.FullName ?? string.Empty
+            PatientName    = ot.Consultation?.Appointment?.Patient?.FullName ?? string.Empty,
+            TestType       = ot.LabTest?.TestType ?? "Single",
+            Unit           = ot.LabTest?.Unit,
+            ReferenceRange = ot.LabTest?.ReferenceRange
         };
 
         public async Task<IEnumerable<PatientLabResultDto>> GetMyLabResultsAsync(int userId)

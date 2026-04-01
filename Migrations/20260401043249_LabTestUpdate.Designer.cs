@@ -4,6 +4,7 @@ using Axivora.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Axivora.Migrations
 {
     [DbContext(typeof(AxivoraDbContext))]
-    partial class AxivoraDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260401043249_LabTestUpdate")]
+    partial class LabTestUpdate
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -703,10 +706,6 @@ namespace Axivora.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("LabTestId"));
 
-                    b.Property<string>("Description")
-                        .HasMaxLength(500)
-                        .HasColumnType("nvarchar(500)");
-
                     b.Property<string>("ReferenceRange")
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
@@ -769,9 +768,6 @@ namespace Axivora.Migrations
 
                     b.Property<int>("LabTestId")
                         .HasColumnType("int");
-
-                    b.Property<DateTime>("OrderedAt")
-                        .HasColumnType("datetime2");
 
                     b.Property<string>("Result")
                         .HasColumnType("nvarchar(max)");

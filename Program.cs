@@ -108,6 +108,7 @@ namespace Axivora
             builder.Services.AddScoped<IICDCodeService, ICDCodeService>();
             builder.Services.AddScoped<IAdminUserService, AdminUserService>();
             builder.Services.AddScoped<IPatientVitalService, PatientVitalService>();
+            builder.Services.AddScoped<IDoctorDashboardService, DoctorDashboardService>();
             builder.Services.AddScoped<IPatientDashboardService, PatientDashboardService>();
             builder.Services.AddScoped<IPdfService, PdfService>();
             // Date-based slot scheduling services

@@ -22,7 +22,7 @@ namespace Axivora.DTOs
     public class LabResultUpdateDto
     {
         [Required(ErrorMessage = "Result is required")]
-        [StringLength(2000)]
+        [StringLength(10000)]
         public string Result { get; set; } = null!;
     }
 

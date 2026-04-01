@@ -21,9 +21,6 @@ namespace Axivora.Services
             if (orderedTest == null)
                 throw new KeyNotFoundException($"Ordered test with ID {orderedTestId} not found.");
 
-            if (orderedTest.Status == "Completed")
-                throw new InvalidOperationException("This lab test result has already been uploaded. Use PUT to update it.");
-
             orderedTest.Result     = dto.Result;
             orderedTest.Status     = "Completed";
             orderedTest.ResultDate = DateTime.UtcNow;

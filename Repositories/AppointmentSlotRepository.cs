@@ -19,7 +19,7 @@ namespace Axivora.Repositories
 
         /// <summary>
         /// Fetches a tracked slot so callers can update its status and save.
-        /// Tracking is intentionally kept — do NOT add AsNoTracking.
+        /// Tracking is intentionally kept ï¿½ do NOT add AsNoTracking.
         /// </summary>
         public async Task<AppointmentSlot?> GetByIdAsync(int id) =>
             await _context.AppointmentSlots

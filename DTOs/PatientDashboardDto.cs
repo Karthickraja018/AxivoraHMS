@@ -66,6 +66,10 @@ namespace Axivora.DTOs
         public int OrderedTestId { get; set; }
         public string TestName { get; set; } = null!;
         public string Status { get; set; } = null!;
+        public string TestType { get; set; } = "Single";
+        public bool HasReportFile { get; set; }
+        public string DoctorName { get; set; } = null!;
+        public string? ReportFileName { get; set; }
     }
 
     public class PatientDashboardActivityDto

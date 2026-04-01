@@ -70,6 +70,9 @@ namespace Axivora.DTOs
         public string Status { get; set; }
         public string Result { get; set; }
         public DateTime? ResultDate { get; set; }
+        public string TestType { get; set; } = "Single";
+        public bool HasReportFile { get; set; }
+        public string? ReportFileName { get; set; }
     }
 
     public class CreateOrderedTestDto

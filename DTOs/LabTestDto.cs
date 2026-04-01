@@ -18,6 +18,7 @@ namespace Axivora.DTOs
         public string? Unit { get; set; }
         public string? ReferenceRange { get; set; }
         public bool HasReportFile { get; set; }
+        public string? ReportFileName { get; set; }
     }
 
     public class LabResultUpdateDto
@@ -53,5 +54,6 @@ namespace Axivora.DTOs
         public DateTime? ResultDate { get; set; }
         public string DoctorName { get; set; } = null!;
         public bool HasReportFile { get; set; }
+        public string? ReportFileName { get; set; }
     }
 }

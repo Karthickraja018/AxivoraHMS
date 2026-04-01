@@ -134,6 +134,36 @@ namespace Axivora.Controllers
         }
 
         /// <summary>
+        /// Unified lab report download for an ordered test.
+        /// For Single/Multi test types, returns generated PDF.
+        /// For Report test type, returns uploaded report file.
+        /// </summary>
+        [HttpGet("{orderedTestId:int}/download")]
+        [Authorize(Roles = "Patient,Doctor,Admin")]
+        [ProducesResponseType(typeof(FileStreamResult), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
+        public async Task<IActionResult> DownloadReportAuto(int orderedTestId, CancellationToken ct)
+        {
+            var role   = User.FindFirstValue(ClaimTypes.Role)!;
+            var userId = int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+            try
+            {
+                var (stream, contentType, fileName) =
+                    await _labTestService.DownloadPatientReportAsync(orderedTestId, userId, role, ct);
+                return File(stream, contentType, fileName);
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return NotFound(new { message = ex.Message });
+            }
+            catch (UnauthorizedAccessException)
+            {
+                return Forbid();
+            }
+        }
+
+        /// <summary>
         /// Get all lab test results for a patient (Admin, Doctor)
         /// </summary>
         [HttpGet("patient/{patientId}")]
@@ -173,7 +203,7 @@ namespace Axivora.Controllers
         /// </remarks>
         /// <param name="search">Optional partial name filter (e.g. <c>blood</c> matches <c>Blood Glucose - Fasting</c>).</param>
         /// <param name="pageNumber">1-based page number. Defaults to <c>1</c>.</param>
-        /// <param name="pageSize">Records per page (1ù100). Defaults to <c>20</c>.</param>
+        /// <param name="pageSize">Records per page (1ÔøΩ100). Defaults to <c>20</c>.</param>
         /// <response code="200">Paginated lab test catalogue returned successfully.</response>
         /// <response code="401">JWT token is missing or invalid.</response>
         [HttpGet("catalogue")]

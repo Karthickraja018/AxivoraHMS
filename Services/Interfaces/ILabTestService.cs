@@ -20,6 +20,12 @@ namespace Axivora.Services.Interfaces
             int callerUserId,
             string callerRole,
             CancellationToken ct);
+
+        Task<(Stream Stream, string ContentType, string FileName)> DownloadPatientReportAsync(
+            int orderedTestId,
+            int callerUserId,
+            string callerRole,
+            CancellationToken ct);
         Task<IEnumerable<LabResultDto>> GetResultsByPatientAsync(int patientId);
         Task<IEnumerable<LabResultDto>> GetResultsByConsultationAsync(int consultationId);
 

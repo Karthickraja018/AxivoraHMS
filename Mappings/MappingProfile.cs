@@ -74,7 +74,10 @@ namespace Axivora.Mappings
 
             CreateMap<OrderedTest, OrderedTestDto>()
                 .ForMember(dest => dest.TestName, opt => opt.MapFrom(src => src.LabTest.TestName))
-                .ForMember(dest => dest.Result, opt => opt.MapFrom(src => src.Result));
+                .ForMember(dest => dest.Result, opt => opt.MapFrom(src => src.Result))
+                .ForMember(dest => dest.TestType, opt => opt.MapFrom(src => src.LabTest.TestType))
+                .ForMember(dest => dest.HasReportFile, opt => opt.MapFrom(src => !string.IsNullOrWhiteSpace(src.ReportFilePath)))
+                .ForMember(dest => dest.ReportFileName, opt => opt.MapFrom(src => src.ReportFileName));
             CreateMap<CreateOrderedTestDto, OrderedTest>();
 
             // Session Feedback

@@ -131,13 +131,17 @@ namespace Axivora.Services
 
             var labPreview = consultations
                 .OrderByDescending(c => c.CreatedAt)
-                .SelectMany(c => c.OrderedTests ?? new List<OrderedTestDto>())
+                .SelectMany(c => (c.OrderedTests ?? new List<OrderedTestDto>()).Select(t => (Consultation: c, Test: t)))
                 .Take(8)
-                .Select(t => new PatientDashboardLabResultDto
+                .Select(x => new PatientDashboardLabResultDto
                 {
-                    OrderedTestId = t.OrderedTestId,
-                    TestName = t.TestName,
-                    Status = t.Status
+                    OrderedTestId = x.Test.OrderedTestId,
+                    TestName = x.Test.TestName,
+                    Status = x.Test.Status,
+                    TestType = string.IsNullOrWhiteSpace(x.Test.TestType) ? "Single" : x.Test.TestType,
+                    HasReportFile = x.Test.HasReportFile,
+                    DoctorName = x.Consultation.DoctorName,
+                    ReportFileName = x.Test.ReportFileName
                 })
                 .ToList();
 

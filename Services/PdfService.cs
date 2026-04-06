@@ -1,5 +1,5 @@
 using Microsoft.Extensions.Options;
-using Axivora.Configuration;
+using Axivora.Data.Configurations;
 using Axivora.Models;
 using Axivora.Repositories.Interfaces;
 using Axivora.Services.Interfaces;

@@ -3,7 +3,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
-using Axivora.Configuration;
+using Axivora.Data.Configurations;
 using Axivora.Data;
 using Axivora.Middleware;
 using Axivora.Services;

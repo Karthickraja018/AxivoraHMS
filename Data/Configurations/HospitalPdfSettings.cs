@@ -1,4 +1,4 @@
-namespace Axivora.Configuration
+namespace Axivora.Data.Configurations
 {
     public class HospitalPdfSettings
     {

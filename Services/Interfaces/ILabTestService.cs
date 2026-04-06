@@ -44,6 +44,11 @@ namespace Axivora.Services.Interfaces
         Task<LabTestCatalogueDto?> GetCatalogueItemAsync(int id);
 
         /// <summary>
+        /// Returns all lab results across all consultations (Admin only).
+        /// </summary>
+        Task<IEnumerable<LabResultDto>> GetAllResultsAsync();
+
+        /// <summary>
         /// Returns all lab results belonging to the authenticated patient's consultations.
         /// </summary>
         /// <param name="userId">The <c>UserId</c> from the JWT claim.</param>

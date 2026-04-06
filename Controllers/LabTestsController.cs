@@ -22,6 +22,20 @@ namespace Axivora.Controllers
         }
 
         /// <summary>
+        /// Get all lab test results (Admin only).
+        /// </summary>
+        [HttpGet]
+        [Authorize(Roles = "Admin")]
+        [ProducesResponseType(typeof(IEnumerable<LabResultDto>), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
+        public async Task<ActionResult<IEnumerable<LabResultDto>>> GetAllResults()
+        {
+            var results = await _labTestService.GetAllResultsAsync();
+            return Ok(results);
+        }
+
+        /// <summary>
         /// Download a single ordered test report as PDF. <paramref name="id"/> is the ordered-test id.
         /// </summary>
         [HttpGet("{id:int}/report-pdf")]

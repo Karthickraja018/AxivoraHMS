@@ -89,6 +89,11 @@ namespace Axivora.Repositories
         public async Task<LabTest?> GetCatalogueItemAsync(int id) =>
             await _context.LabTests.FirstOrDefaultAsync(lt => lt.LabTestId == id);
 
+        public async Task<IEnumerable<OrderedTest>> GetAllOrderedTestsAsync() =>
+            await OrderedTestWithNavigationsQuery()
+                .OrderByDescending(ot => ot.OrderedAt)
+                .ToListAsync();
+
         public async Task SaveChangesAsync() =>
             await _context.SaveChangesAsync();
     }

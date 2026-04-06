@@ -14,6 +14,7 @@ namespace Axivora.Repositories.Interfaces
         Task<int> CountCatalogueAsync(string? search);
         Task<IEnumerable<LabTest>> GetCataloguePagedAsync(string? search, int skip, int take);
         Task<LabTest?> GetCatalogueItemAsync(int id);
+        Task<IEnumerable<OrderedTest>> GetAllOrderedTestsAsync();
         Task SaveChangesAsync();
     }
 }

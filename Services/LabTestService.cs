@@ -136,6 +136,12 @@ namespace Axivora.Services
             });
         }
 
+        public async Task<IEnumerable<LabResultDto>> GetAllResultsAsync()
+        {
+            var tests = await _repository.GetAllOrderedTestsAsync();
+            return tests.Select(MapToLabResultDto);
+        }
+
         public async Task<LabResultDto> UploadReportFileAsync(
             int orderedTestId,
             IFormFile file,

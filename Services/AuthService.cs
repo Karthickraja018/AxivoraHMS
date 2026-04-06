@@ -342,7 +342,7 @@ namespace Axivora.Services
             var bytes = new byte[4];
             using var rng = RandomNumberGenerator.Create();
             rng.GetBytes(bytes);
-            // Produces a 6-digit number in the range 100000ù999999
+            // Produces a 6-digit number in the range 100000ÔøΩ999999
             var value = (BitConverter.ToUInt32(bytes, 0) % 900000) + 100000;
             return value.ToString();
         }

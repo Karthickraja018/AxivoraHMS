@@ -117,10 +117,6 @@ namespace Axivora.Services
             if (template is null)
                 throw new KeyNotFoundException($"Availability template with ID {templateId} not found.");
 
-            // Soft-delete by deactivating rather than removing to preserve historical day records
-            template.IsActive = false;
-            await _repository.SaveChangesAsync();
-
             // Clean up future unbooked slots generated from this template
             var removedCount = await _dayRepository.RemoveOpenDaysAsync(
                 template.DoctorId,
@@ -128,7 +124,12 @@ namespace Axivora.Services
                 DateOnly.FromDateTime(DateTime.UtcNow).AddDays(90),
                 template.Id);
 
-            _logger.LogInformation("Deactivated availability template {TemplateId} and removed {Count} unbooked future days.", templateId, removedCount);
+            // Permanently remove the template so it does not reappear in the schedule list.
+            // Existing availability day records are preserved (SourceTemplateId becomes null).
+            _repository.Delete(template);
+            await _repository.SaveChangesAsync();
+
+            _logger.LogInformation("Deleted availability template {TemplateId} and removed {Count} unbooked future days.", templateId, removedCount);
         }
     }
 }

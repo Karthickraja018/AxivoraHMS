@@ -49,6 +49,9 @@ namespace Axivora.Repositories
         public async Task AddAsync(DoctorAvailabilityTemplate template) =>
             await _context.DoctorAvailabilityTemplates.AddAsync(template);
 
+        public void Delete(DoctorAvailabilityTemplate template) =>
+            _context.DoctorAvailabilityTemplates.Remove(template);
+
         public async Task SaveChangesAsync() =>
             await _context.SaveChangesAsync();
     }

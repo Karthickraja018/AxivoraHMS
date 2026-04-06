@@ -16,6 +16,6 @@ namespace Axivora.Services.Interfaces
         Task<ConsultationDto> UpdateConsultationAsync(int consultationId, UpdateConsultationDto updateConsultationDto);
         Task<ConsultationDto> AddPrescriptionAsync(int consultationId, CreatePrescriptionDto prescriptionDto);
         Task<ConsultationDto> AddLabTestAsync(int consultationId, CreateOrderedTestDto orderedTestDto);
-        Task<PaginationResponse<ConsultationDto>> GetConsultationsByDoctorUserIdAsync(int userId, PaginationParams paginationParams);
+        Task<PaginationResponse<ConsultationDto>> GetConsultationsByDoctorUserIdAsync(int userId, ConsultationDoctorFilterParams filterParams);
     }
 }

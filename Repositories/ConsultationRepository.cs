@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Axivora.Data;
 using Axivora.Models;
 using Axivora.Repositories.Interfaces;
+using Axivora.Helpers;
 
 namespace Axivora.Repositories
 {
@@ -85,6 +86,62 @@ namespace Axivora.Repositories
         public async Task<IEnumerable<Consultation>> GetPagedByDoctorAsync(int doctorId, int skip, int take) =>
             await BaseQuery()
                 .Where(c => c.Appointment != null && c.Appointment.DoctorId == doctorId)
+                .OrderByDescending(c => c.CreatedAt)
+                .Skip(skip).Take(take)
+                .ToListAsync();
+
+        private IQueryable<Consultation> BuildDoctorFilteredQuery(int doctorId, ConsultationDoctorFilterParams filter)
+        {
+            var query = BaseQuery()
+                .Where(c => c.Appointment != null && c.Appointment.DoctorId == doctorId);
+
+            if (!string.IsNullOrWhiteSpace(filter.Search))
+            {
+                var s = filter.Search.Trim();
+                query = query.Where(c =>
+                    (c.Appointment != null && c.Appointment.Patient != null && EF.Functions.Like(c.Appointment.Patient.FullName, $"%{s}%")) ||
+                    EF.Functions.Like(c.ChiefComplaint ?? string.Empty, $"%{s}%") ||
+                    EF.Functions.Like(c.DiagnosisNotes ?? string.Empty, $"%{s}%") ||
+                    EF.Functions.Like(c.TreatmentPlan ?? string.Empty, $"%{s}%") ||
+                    (c.ICDCode != null && EF.Functions.Like(c.ICDCode.Code, $"%{s}%"))
+                );
+            }
+
+            if (filter.From.HasValue)
+            {
+                query = query.Where(c => c.CreatedAt >= filter.From.Value);
+            }
+
+            if (filter.To.HasValue)
+            {
+                var toExclusive = filter.To.Value.Date.AddDays(1);
+                query = query.Where(c => c.CreatedAt < toExclusive);
+            }
+
+            if (!string.IsNullOrWhiteSpace(filter.Focus))
+            {
+                var focus = filter.Focus.Trim().ToLowerInvariant();
+                query = focus switch
+                {
+                    "needsdocumentation" => query.Where(c =>
+                        string.IsNullOrWhiteSpace(c.ChiefComplaint) ||
+                        string.IsNullOrWhiteSpace(c.DiagnosisNotes) ||
+                        string.IsNullOrWhiteSpace(c.TreatmentPlan)),
+                    "haslabs" => query.Where(c => c.OrderedTests.Any()),
+                    "hasprescriptions" => query.Where(c => c.Prescriptions.Any()),
+                    "hasicd" => query.Where(c => c.ICDId != null),
+                    _ => query,
+                };
+            }
+
+            return query;
+        }
+
+        public async Task<int> CountByDoctorFilteredAsync(int doctorId, ConsultationDoctorFilterParams filter) =>
+            await BuildDoctorFilteredQuery(doctorId, filter).CountAsync();
+
+        public async Task<IEnumerable<Consultation>> GetPagedByDoctorFilteredAsync(int doctorId, ConsultationDoctorFilterParams filter, int skip, int take) =>
+            await BuildDoctorFilteredQuery(doctorId, filter)
                 .OrderByDescending(c => c.CreatedAt)
                 .Skip(skip).Take(take)
                 .ToListAsync();

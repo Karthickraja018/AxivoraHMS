@@ -13,6 +13,7 @@ namespace Axivora.Repositories.Interfaces
         Task<IEnumerable<DoctorAvailabilityTemplate>> GetActiveTemplatesAsync(int? doctorId = null);
 
         Task AddAsync(DoctorAvailabilityTemplate template);
+        void Delete(DoctorAvailabilityTemplate template);
         Task SaveChangesAsync();
     }
 }

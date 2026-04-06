@@ -58,10 +58,10 @@ namespace Axivora.Controllers
         [ProducesResponseType(typeof(PaginationResponse<ConsultationDto>), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         [ProducesResponseType(StatusCodes.Status403Forbidden)]
-        public async Task<ActionResult<PaginationResponse<ConsultationDto>>> GetMyDoctorConsultations([FromQuery] PaginationParams paginationParams)
+        public async Task<ActionResult<PaginationResponse<ConsultationDto>>> GetMyDoctorConsultations([FromQuery] ConsultationDoctorFilterParams filterParams)
         {
             var userId = int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
-            var consultations = await _consultationService.GetConsultationsByDoctorUserIdAsync(userId, paginationParams);
+            var consultations = await _consultationService.GetConsultationsByDoctorUserIdAsync(userId, filterParams);
             return Ok(consultations);
         }
 

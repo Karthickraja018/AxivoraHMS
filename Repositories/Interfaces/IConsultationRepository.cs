@@ -1,4 +1,5 @@
 using Axivora.Models;
+using Axivora.Helpers;
 
 namespace Axivora.Repositories.Interfaces
 {
@@ -17,6 +18,8 @@ namespace Axivora.Repositories.Interfaces
         Task<Appointment?> GetAppointmentWithPatientAndDoctorAsync(int appointmentId);
         Task<int> CountByDoctorAsync(int doctorId);
         Task<IEnumerable<Consultation>> GetPagedByDoctorAsync(int doctorId, int skip, int take);
+        Task<int> CountByDoctorFilteredAsync(int doctorId, ConsultationDoctorFilterParams filter);
+        Task<IEnumerable<Consultation>> GetPagedByDoctorFilteredAsync(int doctorId, ConsultationDoctorFilterParams filter, int skip, int take);
         Task AddConsultationAsync(Consultation consultation);
         Task<bool> IsMedicineAlreadyPrescribedAsync(int consultationId, int medicineId);
         Task AddPrescriptionAsync(Prescription prescription);

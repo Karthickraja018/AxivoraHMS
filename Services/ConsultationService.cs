@@ -227,24 +227,25 @@ namespace Axivora.Services
             return await GetConsultationByIdAsync(consultationId);
         }
 
-        public async Task<PaginationResponse<ConsultationDto>> GetConsultationsByDoctorUserIdAsync(int userId, PaginationParams paginationParams)
+        public async Task<PaginationResponse<ConsultationDto>> GetConsultationsByDoctorUserIdAsync(int userId, ConsultationDoctorFilterParams filterParams)
         {
             var doctor = await _repository.GetDoctorByUserIdAsync(userId);
 
             if (doctor == null)
                 throw new KeyNotFoundException("Doctor profile not found.");
 
-            var totalCount = await _repository.CountByDoctorAsync(doctor.DoctorId);
-            var consultations = await _repository.GetPagedByDoctorAsync(
+            var totalCount = await _repository.CountByDoctorFilteredAsync(doctor.DoctorId, filterParams);
+            var consultations = await _repository.GetPagedByDoctorFilteredAsync(
                 doctor.DoctorId,
-                (paginationParams.PageNumber - 1) * paginationParams.PageSize,
-                paginationParams.PageSize);
+                filterParams,
+                (filterParams.PageNumber - 1) * filterParams.PageSize,
+                filterParams.PageSize);
 
             return new PaginationResponse<ConsultationDto>(
                 _mapper.Map<IEnumerable<ConsultationDto>>(consultations),
                 totalCount,
-                paginationParams.PageNumber,
-                paginationParams.PageSize);
+                filterParams.PageNumber,
+                filterParams.PageSize);
         }
 
         /// <summary>

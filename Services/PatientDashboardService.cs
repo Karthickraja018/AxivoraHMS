@@ -87,9 +87,28 @@ namespace Axivora.Services
                 .SelectMany(c => c.OrderedTests ?? new List<OrderedTestDto>())
                 .Count(t => string.Equals(t.Status, "Pending", StringComparison.OrdinalIgnoreCase));
 
-            var activeRx = consultations
-                .SelectMany(c => c.Prescriptions ?? new List<PrescriptionDto>())
-                .Count();
+            var activePrescriptionRows = consultations
+                .SelectMany(c => (c.Prescriptions ?? new List<PrescriptionDto>()).Select(p =>
+                {
+                    var startDate = c.AppointmentDate.Date;
+                    var durationDays = p.DurationDays.GetValueOrDefault(1);
+                    if (durationDays < 1) durationDays = 1;
+
+                    var endDate = startDate.AddDays(durationDays - 1);
+                    var isActive = now.Date >= startDate && now.Date <= endDate;
+                    var remainingDays = isActive ? (endDate - now.Date).Days + 1 : 0;
+
+                    return new
+                    {
+                        Consultation = c,
+                        Prescription = p,
+                        IsActive = isActive,
+                        RemainingDays = remainingDays,
+                    };
+                }))
+                .ToList();
+
+            var activeRx = activePrescriptionRows.Count(x => x.IsActive);
 
             var recentAppts = appointments
                 .OrderByDescending(a => a.AppointmentStart)
@@ -118,15 +137,19 @@ namespace Axivora.Services
                 })
                 .ToList();
 
-            var rxPreview = consultations
-                .OrderByDescending(c => c.CreatedAt)
-                .SelectMany(c => (c.Prescriptions ?? new List<PrescriptionDto>()).Select(p => (c, p)))
+            var rxPreview = activePrescriptionRows
+                .Where(x => x.IsActive)
+                .OrderBy(x => x.RemainingDays)
+                .ThenByDescending(x => x.Consultation.CreatedAt)
                 .Take(6)
                 .Select(x => new PatientDashboardPrescriptionDto
                 {
-                    PrescriptionId = x.p.PrescriptionId,
-                    MedicineName = x.p.MedicineName,
-                    Dosage = string.IsNullOrWhiteSpace(x.p.Dosage) ? "-" : x.p.Dosage
+                    PrescriptionId = x.Prescription.PrescriptionId,
+                    MedicineName = x.Prescription.MedicineName,
+                    Dosage = string.IsNullOrWhiteSpace(x.Prescription.Dosage) ? "-" : x.Prescription.Dosage,
+                    Frequency = string.IsNullOrWhiteSpace(x.Prescription.Frequency) ? "-" : x.Prescription.Frequency,
+                    IsActive = x.IsActive,
+                    RemainingDays = x.RemainingDays,
                 })
                 .ToList();
 

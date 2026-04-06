@@ -61,6 +61,9 @@ namespace Axivora.DTOs
         public int PrescriptionId { get; set; }
         public string MedicineName { get; set; } = null!;
         public string Dosage { get; set; } = null!;
+        public string Frequency { get; set; } = null!;
+        public bool IsActive { get; set; }
+        public int RemainingDays { get; set; }
     }
 
     public class PatientDashboardLabResultDto

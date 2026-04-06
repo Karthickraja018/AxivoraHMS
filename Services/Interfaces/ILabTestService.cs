@@ -32,10 +32,7 @@ namespace Axivora.Services.Interfaces
         /// <summary>
         /// Returns a paginated list of lab tests from the catalogue, optionally filtered by name.
         /// </summary>
-        /// <param name="search">Optional case-insensitive partial match on <c>TestName</c>.</param>
-        /// <param name="pageNumber">1-based page index.</param>
-        /// <param name="pageSize">Number of records per page (max 100).</param>
-        Task<PaginationResponse<LabTestCatalogueDto>> GetCatalogueAsync(string? search, int pageNumber, int pageSize);
+        Task<PaginationResponse<LabTestCatalogueDto>> GetCatalogueAsync(PaginationParams paginationParams);
 
         /// <summary>
         /// Returns a single lab test catalogue entry by its identifier, or <see langword="null"/> if not found.
@@ -46,7 +43,7 @@ namespace Axivora.Services.Interfaces
         /// <summary>
         /// Returns all lab results across all consultations (Admin only).
         /// </summary>
-        Task<IEnumerable<LabResultDto>> GetAllResultsAsync();
+        Task<PaginationResponse<LabResultDto>> GetAllResultsAsync(PaginationParams paginationParams);
 
         /// <summary>
         /// Returns all lab results belonging to the authenticated patient's consultations.

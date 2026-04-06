@@ -133,20 +133,17 @@ namespace Axivora.Controllers
         [ProducesResponseType(StatusCodes.Status403Forbidden)]
         public async Task<ActionResult<PaginationResponse<AppointmentDto>>> GetMyAppointments(
             [FromQuery] PaginationParams paginationParams,
-            [FromQuery] string? search = null,
             [FromQuery] int? doctorId = null,
-            [FromQuery] string? status = null,
-            [FromQuery] DateTime? fromDate = null,
-            [FromQuery] DateTime? toDate = null)
+            [FromQuery] string? status = null)
         {
             var userId = int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
             var filter = new PatientAppointmentsFilter
             {
-                Search   = search,
+                Search   = paginationParams.SearchTerm,
                 DoctorId = doctorId,
                 Status   = status,
-                FromDate = fromDate,
-                ToDate   = toDate
+                FromDate = paginationParams.StartDate,
+                ToDate   = paginationParams.EndDate
             };
             var appointments = await _appointmentService.GetMyAppointmentsAsync(userId, paginationParams, filter);
             return Ok(appointments);

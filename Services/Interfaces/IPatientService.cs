@@ -6,7 +6,6 @@ namespace Axivora.Services.Interfaces
 {
     public interface IPatientService
     {
-        Task<IEnumerable<PatientDto>> GetAllPatientsAsync();
         Task<PaginationResponse<PatientDto>> GetAllPatientsAsync(PaginationParams paginationParams);
         Task<PatientDto> GetPatientByIdAsync(int patientId);
         Task<PatientDto> GetPatientByMRNAsync(string mrn);
@@ -20,6 +19,5 @@ namespace Axivora.Services.Interfaces
         
         Task<PatientDto> UpdatePatientAsync(int patientId, UpdatePatientDto updatePatientDto);
         Task<bool> DeletePatientAsync(int patientId);
-        Task<IEnumerable<PatientDto>> SearchPatientsAsync(string searchTerm);
     }
 }

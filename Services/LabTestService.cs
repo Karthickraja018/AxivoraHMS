@@ -64,10 +64,14 @@ namespace Axivora.Services
             return orderedTests.Select(MapToLabResultDto);
         }
 
-        public async Task<PaginationResponse<LabTestCatalogueDto>> GetCatalogueAsync(string? search, int pageNumber, int pageSize)
+        public async Task<PaginationResponse<LabTestCatalogueDto>> GetCatalogueAsync(PaginationParams paginationParams)
         {
+            var search = paginationParams.SearchTerm;
+            var page = paginationParams.PageNumber;
+            var size = paginationParams.PageSize;
+
             var totalCount = await _repository.CountCatalogueAsync(search);
-            var items = await _repository.GetCataloguePagedAsync(search, (pageNumber - 1) * pageSize, pageSize);
+            var items = await _repository.GetCataloguePagedAsync(search, (page - 1) * size, size);
 
             var dtos = items.Select(lt => new LabTestCatalogueDto
             {
@@ -79,7 +83,7 @@ namespace Axivora.Services
                 ReferenceRange = lt.ReferenceRange
             }).ToList();
 
-            return new PaginationResponse<LabTestCatalogueDto>(dtos, totalCount, pageNumber, pageSize);
+            return new PaginationResponse<LabTestCatalogueDto>(dtos, totalCount, page, size);
         }
 
         public async Task<LabTestCatalogueDto?> GetCatalogueItemAsync(int id)
@@ -136,10 +140,18 @@ namespace Axivora.Services
             });
         }
 
-        public async Task<IEnumerable<LabResultDto>> GetAllResultsAsync()
+        public async Task<PaginationResponse<LabResultDto>> GetAllResultsAsync(PaginationParams paginationParams)
         {
-            var tests = await _repository.GetAllOrderedTestsAsync();
-            return tests.Select(MapToLabResultDto);
+            var search = paginationParams.SearchTerm;
+            var page = paginationParams.PageNumber;
+            var size = paginationParams.PageSize;
+
+            var totalCount = await _repository.CountOrderedTestsAsync(search);
+            var items = await _repository.GetOrderedTestsPagedAsync(search, (page - 1) * size, size);
+
+            var dtos = items.Select(MapToLabResultDto).ToList();
+
+            return new PaginationResponse<LabResultDto>(dtos, totalCount, page, size);
         }
 
         public async Task<LabResultDto> UploadReportFileAsync(

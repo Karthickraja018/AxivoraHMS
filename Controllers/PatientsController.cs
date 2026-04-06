@@ -72,19 +72,6 @@ namespace Axivora.Controllers
             return Ok(patient);
         }
 
-        /// <summary>
-        /// Search patients by name, MRN, or phone number (Admin and Doctor only)
-        /// </summary>
-        [HttpGet("search")]
-        [Authorize(Roles = "Admin,Doctor")]
-        [ProducesResponseType(typeof(IEnumerable<PatientDto>), StatusCodes.Status200OK)]
-        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-        [ProducesResponseType(StatusCodes.Status403Forbidden)]
-        public async Task<ActionResult<IEnumerable<PatientDto>>> SearchPatients([FromQuery] string searchTerm)
-        {
-            var patients = await _patientService.SearchPatientsAsync(searchTerm);
-            return Ok(patients);
-        }
 
         /// <summary>
         /// Get current user's patient profile

@@ -93,6 +93,27 @@ namespace Axivora.Repositories
             await OrderedTestWithNavigationsQuery()
                 .OrderByDescending(ot => ot.OrderedAt)
                 .ToListAsync();
+        
+        public async Task<int> CountOrderedTestsAsync(string? search)
+        {
+            var query = OrderedTestWithNavigationsQuery();
+            if (!string.IsNullOrWhiteSpace(search))
+                query = query.Where(ot => ot.LabTest!.TestName.Contains(search) || 
+                                          ot.Consultation!.Appointment!.Patient!.FullName.Contains(search));
+            return await query.CountAsync();
+        }
+
+        public async Task<IEnumerable<OrderedTest>> GetOrderedTestsPagedAsync(string? search, int skip, int take)
+        {
+            var query = OrderedTestWithNavigationsQuery();
+            if (!string.IsNullOrWhiteSpace(search))
+                query = query.Where(ot => ot.LabTest!.TestName.Contains(search) || 
+                                          ot.Consultation!.Appointment!.Patient!.FullName.Contains(search));
+            return await query
+                .OrderByDescending(ot => ot.OrderedAt)
+                .Skip(skip).Take(take)
+                .ToListAsync();
+        }
 
         public async Task SaveChangesAsync() =>
             await _context.SaveChangesAsync();

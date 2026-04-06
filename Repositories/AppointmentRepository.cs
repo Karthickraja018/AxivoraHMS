@@ -33,14 +33,18 @@ namespace Axivora.Repositories
         /// Doctor filter without navigation includes � keeps COUNT and ORDER BY + SKIP/TAKE on a narrow rowset
         /// (soft-delete is already applied via global query filter on <see cref="Appointment"/>).
         /// </summary>
-        private IQueryable<Appointment> DoctorAppointmentsCore(int doctorId, DateTime? date)
+        private IQueryable<Appointment> DoctorAppointmentsCore(int doctorId, DateTime? startDate, DateTime? endDate)
         {
-            var q = _context.Appointments.AsNoTracking().Where(a => a.DoctorId == doctorId);
-            if (date.HasValue)
+            var q = BaseQuery().Where(a => a.DoctorId == doctorId);
+            if (startDate.HasValue)
             {
-                var dayStart = date.Value.Date;
-                var dayEnd = dayStart.AddDays(1);
-                q = q.Where(a => a.AppointmentStart >= dayStart && a.AppointmentStart < dayEnd);
+                var start = startDate.Value.Date;
+                q = q.Where(a => a.AppointmentStart >= start);
+            }
+            if (endDate.HasValue)
+            {
+                var endExclusive = endDate.Value.Date.AddDays(1);
+                q = q.Where(a => a.AppointmentStart < endExclusive);
             }
             return q;
         }
@@ -180,11 +184,12 @@ namespace Axivora.Repositories
                 .ToListAsync();
         }
 
-        public async Task<int> CountByDoctorAsync(int doctorId, DateTime? date) =>
-            await DoctorAppointmentsCore(doctorId, date).CountAsync();
-
-        public async Task<IEnumerable<Appointment>> GetPagedByDoctorAsync(int doctorId, DateTime? date, int skip, int take) =>
-            await DoctorAppointmentsCore(doctorId, date)
+        public async Task<int> CountByDoctorAsync(int doctorId, DateTime? startDate, DateTime? endDate) =>
+            await DoctorAppointmentsCore(doctorId, startDate, endDate).CountAsync();
+ 
+        public async Task<IEnumerable<Appointment>> GetPagedByDoctorAsync(
+            int doctorId, DateTime? startDate, DateTime? endDate, int skip, int take) =>
+            await DoctorAppointmentsCore(doctorId, startDate, endDate)
                 .Include(a => a.Patient)
                 .Include(a => a.Doctor)
                 .Include(a => a.Status)

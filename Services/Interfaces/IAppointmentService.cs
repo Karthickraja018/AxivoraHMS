@@ -18,7 +18,7 @@ namespace Axivora.Services.Interfaces
         Task<IEnumerable<AppointmentDto>> GetAppointmentsByDateRangeAsync(DateTime startDate, DateTime endDate);
         Task<PaginationResponse<AppointmentDto>> GetMyAppointmentsAsync(
             int userId, PaginationParams paginationParams, PatientAppointmentsFilter? filter);
-        Task<PaginationResponse<AppointmentDto>> GetDoctorAppointmentsAsync(int userId, PaginationParams paginationParams, DateTime? date);
+        Task<PaginationResponse<AppointmentDto>> GetDoctorAppointmentsAsync(int userId, PaginationParams paginationParams);
         Task<AppointmentDto> UpdateAppointmentStatusAsync(int appointmentId, string statusName);
         Task<AppointmentDto> UpdateAppointmentStatusAsync(int appointmentId, string statusName, int callerUserId, string callerRole);
         Task<AppointmentDto> BookAsync(CreateAppointmentDto dto, int callerUserId);

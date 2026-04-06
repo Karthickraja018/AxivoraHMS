@@ -99,7 +99,7 @@ namespace Axivora.Controllers
             if (role == "Doctor")
             {
                 var userId = int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
-                var doctorAppointments = await _appointmentService.GetDoctorAppointmentsAsync(userId, paginationParams, null);
+                var doctorAppointments = await _appointmentService.GetDoctorAppointmentsAsync(userId, paginationParams);
                 return Ok(doctorAppointments);
             }
 
@@ -158,11 +158,24 @@ namespace Axivora.Controllers
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         [ProducesResponseType(StatusCodes.Status403Forbidden)]
         public async Task<ActionResult<PaginationResponse<AppointmentDto>>> GetMyDoctorAppointments(
-            [FromQuery] PaginationParams paginationParams,
-            [FromQuery] DateTime? date = null)
+            [FromQuery] int pageNumber = 1,
+            [FromQuery] int pageSize = 10,
+            [FromQuery] string? searchTerm = null,
+            [FromQuery] DateTime? startDate = null,
+            [FromQuery] DateTime? endDate = null)
         {
+            var paginationParams = new PaginationParams
+            {
+                PageNumber = pageNumber,
+                PageSize = pageSize,
+                SearchTerm = searchTerm,
+                StartDate = startDate,
+                EndDate = endDate
+            };
+
+            Console.WriteLine($"[DEBUG] GetMyDoctorAppointments: Start={startDate}, End={endDate}, Search={searchTerm}");
             var userId = int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
-            var appointments = await _appointmentService.GetDoctorAppointmentsAsync(userId, paginationParams, date);
+            var appointments = await _appointmentService.GetDoctorAppointmentsAsync(userId, paginationParams);
             return Ok(appointments);
         }
 

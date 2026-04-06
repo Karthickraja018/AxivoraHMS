@@ -53,6 +53,7 @@ namespace Axivora.DTOs
         public string DoctorName { get; set; } = null!;
         public string Diagnosis { get; set; } = null!;
         public string Date { get; set; } = null!;
+        public bool HasFeedback { get; set; }
     }
 
     public class PatientDashboardPrescriptionDto

@@ -27,6 +27,10 @@ namespace Axivora.Models
 
         public bool IsDeleted { get; set; }
 
+        public double AverageRating { get; set; } = 0;
+
+        public int TotalRatings { get; set; } = 0;
+
         public DateTime CreatedAt { get; set; }
 
         // Navigation properties

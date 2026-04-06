@@ -30,6 +30,9 @@ namespace Axivora.Repositories
         public async Task<Doctor?> GetDoctorByUserIdAsync(int userId) =>
             await _context.Doctors.FirstOrDefaultAsync(d => d.UserId == userId && !d.IsDeleted);
 
+        public async Task<Doctor?> GetDoctorByIdAsync(int doctorId) =>
+            await _context.Doctors.FirstOrDefaultAsync(d => d.DoctorId == doctorId && !d.IsDeleted);
+
         public async Task<Consultation?> GetConsultationWithAppointmentAsync(int consultationId) =>
             await _context.Consultations
                 .Include(c => c.Appointment)
@@ -71,6 +74,17 @@ namespace Axivora.Repositories
         {
             _context.SessionFeedbacks.Remove(feedback);
             return Task.CompletedTask;
+        }
+
+        public async Task<(double Average, int Count)> GetFeedbackStatsForDoctorAsync(int doctorId)
+        {
+            var query = _context.SessionFeedbacks
+                .Where(f => f.Consultation!.Appointment!.DoctorId == doctorId);
+
+            int count = await query.CountAsync();
+            double average = count > 0 ? await query.AverageAsync(f => f.Rating) : 0;
+
+            return (average, count);
         }
 
         public async Task SaveChangesAsync() =>

@@ -43,6 +43,18 @@ namespace Axivora.Services
             UpdatedAt      = f.UpdatedAt
         };
 
+        private async Task UpdateDoctorRatingAsync(int doctorId)
+        {
+            var doctor = await _repository.GetDoctorByIdAsync(doctorId);
+            if (doctor != null)
+            {
+                var stats = await _repository.GetFeedbackStatsForDoctorAsync(doctorId);
+                doctor.AverageRating = Math.Round(stats.Average, 1);
+                doctor.TotalRatings = stats.Count;
+                await _repository.SaveChangesAsync();
+            }
+        }
+
         public async Task<SessionFeedbackDto> CreateFeedbackAsync(CreateFeedbackDto dto, int callerUserId)
         {
             var patient = await _repository.GetPatientByUserIdAsync(callerUserId)
@@ -57,6 +69,9 @@ namespace Axivora.Services
             var statusName = consultation.Appointment.Status?.StatusName ?? string.Empty;
             if (statusName != "Completed")
                 throw new InvalidOperationException("Feedback can only be submitted for completed consultations.");
+
+            if (consultation.CreatedAt < DateTime.UtcNow.AddDays(-30))
+                throw new InvalidOperationException("Feedback must be submitted within 30 days of the consultation.");
 
             if (await _repository.FeedbackExistsForConsultationAsync(dto.ConsultationId))
                 throw new InvalidOperationException("Feedback has already been submitted for this consultation.");
@@ -73,6 +88,10 @@ namespace Axivora.Services
 
             await _repository.AddFeedbackAsync(feedback);
             await _repository.SaveChangesAsync();
+
+            // Recalculate doctor rating
+            var doctorId = consultation.Appointment.DoctorId;
+            await UpdateDoctorRatingAsync(doctorId);
 
             feedback.Patient      = patient;
             feedback.Consultation = consultation;
@@ -101,6 +120,13 @@ namespace Axivora.Services
             feedback.UpdatedAt = DateTime.UtcNow;
 
             await _repository.SaveChangesAsync();
+
+            // Recalculate doctor rating
+            var doctorId = feedback.Consultation?.Appointment?.DoctorId;
+            if (doctorId.HasValue)
+            {
+                await UpdateDoctorRatingAsync(doctorId.Value);
+            }
 
             return MapToDto(feedback);
         }
@@ -167,8 +193,16 @@ namespace Axivora.Services
                     throw new UnauthorizedAccessException("You can only delete your own feedback.");
             }
 
+            var doctorId = feedback.Consultation?.Appointment?.DoctorId;
+
             await _repository.RemoveFeedbackAsync(feedback);
             await _repository.SaveChangesAsync();
+
+            // Recalculate doctor rating
+            if (doctorId.HasValue)
+            {
+                await UpdateDoctorRatingAsync(doctorId.Value);
+            }
         }
     }
 }

@@ -111,9 +111,10 @@ namespace Axivora.Services
                     ConsultationId = c.ConsultationId,
                     DoctorName = c.DoctorName,
                     Diagnosis = string.IsNullOrWhiteSpace(c.DiagnosisNotes)
-                        ? (string.IsNullOrWhiteSpace(c.ICDCode) ? "—" : c.ICDCode)
+                        ? (string.IsNullOrWhiteSpace(c.ICDCode) ? "-" : c.ICDCode)
                         : c.DiagnosisNotes,
-                    Date = c.CreatedAt.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)
+                    Date = c.CreatedAt.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+                    HasFeedback = c.SessionFeedback != null
                 })
                 .ToList();
 
@@ -125,7 +126,7 @@ namespace Axivora.Services
                 {
                     PrescriptionId = x.p.PrescriptionId,
                     MedicineName = x.p.MedicineName,
-                    Dosage = string.IsNullOrWhiteSpace(x.p.Dosage) ? "—" : x.p.Dosage
+                    Dosage = string.IsNullOrWhiteSpace(x.p.Dosage) ? "-" : x.p.Dosage
                 })
                 .ToList();
 
@@ -166,7 +167,7 @@ namespace Axivora.Services
                 {
                     Name = patient.FullName,
                     Age = ageYears.ToString(CultureInfo.InvariantCulture),
-                    Gender = patient.Gender ?? "—"
+                    Gender = patient.Gender ?? "-"
                 },
                 NextAppointment = nextDto,
                 Stats = new PatientDashboardStatsDto

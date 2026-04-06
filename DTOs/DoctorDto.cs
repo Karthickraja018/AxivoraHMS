@@ -12,6 +12,8 @@ namespace Axivora.DTOs
         public bool IsActive { get; set; }
         public AddressDto Address { get; set; }
         public List<DepartmentDto> Departments { get; set; }
+        public double AverageRating { get; set; }
+        public int TotalRatings { get; set; }
     }
 
     /// <summary>

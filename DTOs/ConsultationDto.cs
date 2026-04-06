@@ -17,6 +17,7 @@ namespace Axivora.DTOs
         public string DoctorName { get; set; }
         public List<PrescriptionDto> Prescriptions { get; set; }
         public List<OrderedTestDto> OrderedTests { get; set; }
+        public SessionFeedbackDto? SessionFeedback { get; set; }
     }
 
     public class CreateConsultationDto

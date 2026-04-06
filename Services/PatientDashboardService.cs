@@ -149,6 +149,17 @@ namespace Axivora.Services
 
             var ageYears = ComputeAgeYears(patient.DateOfBirth, now);
 
+            var vitalsPreview = new List<PatientDashboardVitalsDto>
+            {
+                new PatientDashboardVitalsDto { Date = now.AddDays(-6).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), Bp = "120/80", HeartRate = 72, Temperature = 98.6m, Weight = 75.0m },
+                new PatientDashboardVitalsDto { Date = now.AddDays(-5).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), Bp = "122/81", HeartRate = 74, Temperature = 98.7m, Weight = 75.2m },
+                new PatientDashboardVitalsDto { Date = now.AddDays(-4).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), Bp = "118/79", HeartRate = 70, Temperature = 98.5m, Weight = 74.8m },
+                new PatientDashboardVitalsDto { Date = now.AddDays(-3).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), Bp = "121/80", HeartRate = 73, Temperature = 98.6m, Weight = 75.1m },
+                new PatientDashboardVitalsDto { Date = now.AddDays(-2).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), Bp = "124/82", HeartRate = 76, Temperature = 98.8m, Weight = 75.3m },
+                new PatientDashboardVitalsDto { Date = now.AddDays(-1).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), Bp = "119/78", HeartRate = 71, Temperature = 98.4m, Weight = 74.9m },
+                new PatientDashboardVitalsDto { Date = now.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), Bp = "120/80", HeartRate = 72, Temperature = 98.6m, Weight = 75.0m },
+            };
+
             return new PatientDashboardDto
             {
                 Profile = new PatientDashboardProfileDto
@@ -171,7 +182,8 @@ namespace Axivora.Services
                 RecentConsultations = recentConsults,
                 Prescriptions = rxPreview,
                 LabResults = labPreview,
-                RecentActivity = activity
+                RecentActivity = activity,
+                VitalsHistory = vitalsPreview
             };
         }
 

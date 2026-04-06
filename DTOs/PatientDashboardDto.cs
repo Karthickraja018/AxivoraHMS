@@ -10,6 +10,7 @@ namespace Axivora.DTOs
         public List<PatientDashboardPrescriptionDto> Prescriptions { get; set; } = new();
         public List<PatientDashboardLabResultDto> LabResults { get; set; } = new();
         public List<PatientDashboardActivityDto> RecentActivity { get; set; } = new();
+        public List<PatientDashboardVitalsDto> VitalsHistory { get; set; } = new();
     }
 
     public class PatientDashboardProfileDto
@@ -79,5 +80,14 @@ namespace Axivora.DTOs
         public string Title { get; set; } = null!;
         public string Subtitle { get; set; } = null!;
         public DateTime At { get; set; }
+    }
+
+    public class PatientDashboardVitalsDto
+    {
+        public string Date { get; set; } = null!;
+        public string Bp { get; set; } = null!;
+        public int HeartRate { get; set; }
+        public decimal Temperature { get; set; }
+        public decimal Weight { get; set; }
     }
 }

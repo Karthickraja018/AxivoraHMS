@@ -58,7 +58,8 @@ namespace Axivora
 
             // Configure JWT Authentication
             var jwtSettings = builder.Configuration.GetSection("JwtSettings");
-            var secretKey = jwtSettings["SecretKey"];
+            var secretKey = jwtSettings["SecretKey"]
+                ?? throw new InvalidOperationException("Missing configuration: JwtSettings:SecretKey");
             
             builder.Services.AddAuthentication(options =>
             {
@@ -95,10 +96,15 @@ namespace Axivora
             builder.Services.AddAutoMapper(cfg => { }, typeof(MappingProfile).Assembly);
 
             // Register Application Services
+            builder.Services.AddScoped<IAuthenticationService, AuthenticationService>();
+            builder.Services.AddScoped<IPasswordRecoveryService, PasswordRecoveryService>();
             builder.Services.AddScoped<IAuthService, AuthService>();
             builder.Services.AddScoped<IPatientService, PatientService>();
             builder.Services.AddScoped<IDoctorService, DoctorService>();
             builder.Services.AddScoped<IAppointmentService, AppointmentService>();
+            builder.Services.AddScoped<IAppointmentReadService, AppointmentService>();
+            builder.Services.AddScoped<IAppointmentBookingService, AppointmentService>();
+            builder.Services.AddScoped<IAppointmentLifecycleService, AppointmentService>();
             builder.Services.AddScoped<IConsultationService, ConsultationService>();
             builder.Services.AddScoped<ILabTestService, LabTestService>();
             builder.Services.AddScoped<IMedicineService, MedicineService>();
@@ -119,8 +125,15 @@ namespace Axivora
             builder.Services.AddScoped<ISlotService, SlotService>();
             builder.Services.AddHostedService<AvailabilityGenerationBackgroundService>();
 
+            builder.Services.AddScoped<IAppointmentTransitionValidator, AppointmentTransitionValidator>();
+            builder.Services.AddScoped<IAppointmentTransitionStrategy, StartConsultationTransitionStrategy>();
+            builder.Services.AddScoped<IAppointmentTransitionStrategy, EndConsultationTransitionStrategy>();
+            builder.Services.AddScoped<IAppointmentTransitionStrategy, CompleteConsultationTransitionStrategy>();
+            builder.Services.AddScoped<IAppointmentTransitionStrategy, CancelAppointmentTransitionStrategy>();
+            builder.Services.AddScoped<IAppointmentTransitionStrategy, NoShowTransitionStrategy>();
+
             // FIX 11: Idempotency service ? prevents duplicate bookings on network retries
-            builder.Services.AddScoped<IdempotencyService>();
+            builder.Services.AddScoped<IIdempotencyService, IdempotencyService>();
 
             // Register Repositories
             builder.Services.AddScoped<IAppointmentRepository, AppointmentRepository>();

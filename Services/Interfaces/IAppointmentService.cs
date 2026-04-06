@@ -3,31 +3,11 @@ using Axivora.Helpers;
 
 namespace Axivora.Services.Interfaces
 {
-    public interface IAppointmentService
+    public interface IAppointmentService : IAppointmentReadService, IAppointmentBookingService, IAppointmentLifecycleService
     {
-        Task<IEnumerable<AppointmentDto>> GetAllAppointmentsAsync();
-        Task<PaginationResponse<AppointmentDto>> GetAllAppointmentsAsync(PaginationParams paginationParams);
-        Task<AppointmentDto> GetAppointmentByIdAsync(int appointmentId);
-        Task<AppointmentDto> GetAppointmentByIdAsync(int appointmentId, int callerUserId, string callerRole);
-        Task<IEnumerable<AppointmentDto>> GetAppointmentsByPatientIdAsync(int patientId);
-        Task<IEnumerable<AppointmentDto>> GetAppointmentsByDoctorIdAsync(int doctorId);
-        Task<AppointmentDto> UpdateAppointmentAsync(int appointmentId, UpdateAppointmentDto updateAppointmentDto);
         Task<AppointmentDto> UpdateAppointmentAsync(int appointmentId, UpdateAppointmentDto updateAppointmentDto, int callerUserId, string callerRole);
+        Task<AppointmentDto> UpdateAppointmentAsync(int appointmentId, UpdateAppointmentDto updateAppointmentDto);
         Task<bool> CancelAppointmentAsync(int appointmentId);
         Task<bool> CancelAppointmentAsync(int appointmentId, int callerUserId, string callerRole);
-        Task<IEnumerable<AppointmentDto>> GetAppointmentsByDateRangeAsync(DateTime startDate, DateTime endDate);
-        Task<PaginationResponse<AppointmentDto>> GetMyAppointmentsAsync(
-            int userId, PaginationParams paginationParams, PatientAppointmentsFilter? filter);
-        Task<PaginationResponse<AppointmentDto>> GetDoctorAppointmentsAsync(int userId, PaginationParams paginationParams);
-        Task<AppointmentDto> UpdateAppointmentStatusAsync(int appointmentId, string statusName);
-        Task<AppointmentDto> UpdateAppointmentStatusAsync(int appointmentId, string statusName, int callerUserId, string callerRole);
-        Task<AppointmentDto> BookAsync(CreateAppointmentDto dto, int callerUserId);
-        Task<AppointmentDto> RescheduleAsync(int appointmentId, RescheduleAppointmentDto dto, int callerUserId, string callerRole);
-
-        Task<AppointmentDto> CancelAsync(int appointmentId, int callerUserId, string callerRole);
-        Task<AppointmentDto> StartAsync(int appointmentId, int callerUserId, string callerRole);
-        Task<AppointmentDto> EndAsync(int appointmentId, int callerUserId, string callerRole);
-        Task<AppointmentDto> CompleteAsync(int appointmentId, int callerUserId, string callerRole);
-        Task<int> AutoMarkNoShowsAsync(DateTime utcNow, CancellationToken ct);
     }
 }

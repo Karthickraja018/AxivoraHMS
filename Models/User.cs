@@ -26,6 +26,15 @@ namespace Axivora.Models
         /// <summary>UTC expiry time of the current OTP. Null when no OTP is pending.</summary>
         public DateTime? OtpExpiresAt { get; set; }
 
+        /// <summary>Hashed one-time password reset token.</summary>
+        public string? PasswordResetTokenHash { get; set; }
+
+        /// <summary>UTC expiry time for the password reset token.</summary>
+        public DateTime? PasswordResetTokenExpiresAt { get; set; }
+
+        /// <summary>UTC timestamp when password reset was requested.</summary>
+        public DateTime? PasswordResetRequestedAt { get; set; }
+
         public DateTime CreatedAt { get; set; }
 
         public DateTime UpdatedAt { get; set; }

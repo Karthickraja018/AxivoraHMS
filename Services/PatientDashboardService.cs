@@ -8,18 +8,18 @@ namespace Axivora.Services
     public class PatientDashboardService : IPatientDashboardService
     {
         private readonly IPatientService _patientService;
-        private readonly IAppointmentService _appointmentService;
+        private readonly IAppointmentReadService _appointmentReadService;
         private readonly IConsultationService _consultationService;
         private readonly IDoctorService _doctorService;
 
         public PatientDashboardService(
             IPatientService patientService,
-            IAppointmentService appointmentService,
+            IAppointmentReadService appointmentReadService,
             IConsultationService consultationService,
             IDoctorService doctorService)
         {
             _patientService = patientService;
-            _appointmentService = appointmentService;
+            _appointmentReadService = appointmentReadService;
             _consultationService = consultationService;
             _doctorService = doctorService;
         }
@@ -27,7 +27,7 @@ namespace Axivora.Services
         public async Task<PatientDashboardDto> GetPatientDashboardAsync(int patientUserId)
         {
             var patient = await _patientService.GetPatientByUserIdAsync(patientUserId);
-            var appointments = (await _appointmentService.GetAppointmentsByPatientIdAsync(patient.PatientId)).ToList();
+            var appointments = (await _appointmentReadService.GetAppointmentsByPatientIdAsync(patient.PatientId)).ToList();
 
             var consultPage = await _consultationService.GetConsultationsByPatientIdAsync(
                 patient.PatientId,

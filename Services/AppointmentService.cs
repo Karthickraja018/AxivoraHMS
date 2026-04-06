@@ -31,19 +31,22 @@ namespace Axivora.Services
         private readonly ILogger<AppointmentService> _logger;
         private readonly IEmailService _emailService;
         private readonly IConsultationRepository _consultationRepository;
+        private readonly IAppointmentTransitionValidator _transitionValidator;
 
         public AppointmentService(
             IAppointmentRepository repository,
             IMapper mapper,
             ILogger<AppointmentService> logger,
             IEmailService emailService,
-            IConsultationRepository consultationRepository)
+            IConsultationRepository consultationRepository,
+            IAppointmentTransitionValidator transitionValidator)
         {
             _repository   = repository;
             _mapper       = mapper;
             _logger       = logger;
             _emailService = emailService;
             _consultationRepository = consultationRepository;
+            _transitionValidator = transitionValidator;
         }
 
         // Read
@@ -169,7 +172,7 @@ namespace Axivora.Services
                     ?? throw new KeyNotFoundException($"Appointment status with ID {updateAppointmentDto.StatusId.Value} not found.");
 
                 var currentStatusName = appointment.Status?.StatusName ?? string.Empty;
-                AppointmentStatusTransitions.Validate(currentStatusName, targetStatus.StatusName, callerRole);
+                _transitionValidator.ValidateTransition(currentStatusName, targetStatus.StatusName, callerRole);
             }
 
             _mapper.Map(updateAppointmentDto, appointment);
@@ -202,7 +205,7 @@ namespace Axivora.Services
                 ?? throw new KeyNotFoundException($"Appointment status '{statusName}' not found.");
 
             var currentStatusName = appointment.Status?.StatusName ?? string.Empty;
-            AppointmentStatusTransitions.Validate(currentStatusName, statusName, callerRole);
+            _transitionValidator.ValidateTransition(currentStatusName, statusName, callerRole);
 
             if (string.Equals(currentStatusName, statusName, StringComparison.OrdinalIgnoreCase))
                 return await GetAppointmentByIdAsync(appointmentId);
@@ -473,7 +476,7 @@ namespace Axivora.Services
             }
 
             // Normal validation via state machine
-            AppointmentStatusTransitions.Validate(currentRaw, "InProgress", callerRole);
+            _transitionValidator.ValidateTransition(currentRaw, "InProgress", callerRole);
 
             var inProgress = await _repository.GetStatusByNameAsync("InProgress")
                 ?? throw new InvalidOperationException("Appointment status 'InProgress' is not configured.");
@@ -498,7 +501,7 @@ namespace Axivora.Services
             if (currentRaw == "PendingDocumentation")
                 return await GetAppointmentByIdAsync(appointmentId);
 
-            AppointmentStatusTransitions.Validate(currentRaw, "PendingDocumentation", callerRole);
+            _transitionValidator.ValidateTransition(currentRaw, "PendingDocumentation", callerRole);
 
             var pending = await _repository.GetStatusByNameAsync("PendingDocumentation")
                 ?? throw new InvalidOperationException("Appointment status 'PendingDocumentation' is not configured.");
@@ -534,7 +537,7 @@ namespace Axivora.Services
                 throw new InvalidOperationException("Documentation incomplete. Core logic requires: Chief Complaint, Diagnosis, and either a Prescription or Lab Order.");
             }
 
-            AppointmentStatusTransitions.Validate(currentRaw, "Completed", callerRole);
+            _transitionValidator.ValidateTransition(currentRaw, "Completed", callerRole);
 
             var completed = await _repository.GetStatusByNameAsync("Completed")
                 ?? throw new InvalidOperationException("Appointment status 'Completed' is not configured.");

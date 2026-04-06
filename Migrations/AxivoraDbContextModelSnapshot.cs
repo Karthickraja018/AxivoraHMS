@@ -1171,6 +1171,16 @@ namespace Axivora.Migrations
                     b.Property<DateTime?>("OtpExpiresAt")
                         .HasColumnType("datetime2");
 
+                    b.Property<DateTime?>("PasswordResetRequestedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("PasswordResetTokenExpiresAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("PasswordResetTokenHash")
+                        .HasMaxLength(512)
+                        .HasColumnType("nvarchar(512)");
+
                     b.Property<string>("PasswordHash")
                         .IsRequired()
                         .HasMaxLength(512)

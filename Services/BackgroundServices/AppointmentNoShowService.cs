@@ -34,7 +34,7 @@ namespace Axivora.Services.BackgroundServices
                 try
                 {
                     using var scope = _scopeFactory.CreateScope();
-                    var apptService = scope.ServiceProvider.GetRequiredService<IAppointmentService>();
+                    var apptService = scope.ServiceProvider.GetRequiredService<IAppointmentLifecycleService>();
 
                     var count = await apptService.AutoMarkNoShowsAsync(DateTime.UtcNow, stoppingToken);
                     if (count > 0)

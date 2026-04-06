@@ -16,7 +16,7 @@ namespace Axivora.Controllers
         private readonly IConsultationService _consultationService;
         private readonly IPatientService _patientService;
         private readonly IDoctorService _doctorService;
-        private readonly IAppointmentService _appointmentService;
+        private readonly IAppointmentReadService _appointmentReadService;
         private readonly IPdfService _pdfService;
         private readonly ILogger<ConsultationsController> _logger;
 
@@ -24,14 +24,14 @@ namespace Axivora.Controllers
             IConsultationService consultationService,
             IPatientService patientService,
             IDoctorService doctorService,
-            IAppointmentService appointmentService,
+            IAppointmentReadService appointmentReadService,
             IPdfService pdfService,
             ILogger<ConsultationsController> logger)
         {
             _consultationService = consultationService;
             _patientService      = patientService;
             _doctorService       = doctorService;
-            _appointmentService  = appointmentService;
+            _appointmentReadService  = appointmentReadService;
             _pdfService          = pdfService;
             _logger              = logger;
         }
@@ -118,7 +118,7 @@ namespace Axivora.Controllers
                     // Fetch appointment without ownership enforcement so we can compare explicit IDs.
                     // This makes the check deterministic and avoids false negatives from
                     // mismatched "callerRole" strings inside lower layers.
-                    var appt = await _appointmentService.GetAppointmentByIdAsync(appointmentId);
+                    var appt = await _appointmentReadService.GetAppointmentByIdAsync(appointmentId);
 
                     if (string.Equals(role, "Patient", StringComparison.OrdinalIgnoreCase))
                     {

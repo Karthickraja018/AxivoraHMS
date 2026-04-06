@@ -7,16 +7,16 @@ namespace Axivora.Services
     public class DoctorDashboardService : IDoctorDashboardService
     {
         private readonly IDoctorService _doctorService;
-        private readonly IAppointmentService _appointmentService;
+        private readonly IAppointmentReadService _appointmentReadService;
         private readonly ILabTestRepository _labTestRepository;
 
         public DoctorDashboardService(
             IDoctorService doctorService,
-            IAppointmentService appointmentService,
+            IAppointmentReadService appointmentReadService,
             ILabTestRepository labTestRepository)
         {
             _doctorService = doctorService;
-            _appointmentService = appointmentService;
+            _appointmentReadService = appointmentReadService;
             _labTestRepository = labTestRepository;
         }
 
@@ -26,7 +26,7 @@ namespace Axivora.Services
             if (doctor == null)
                 throw new KeyNotFoundException("Doctor profile not found for this account.");
 
-            var appointments = (await _appointmentService.GetAppointmentsByDoctorIdAsync(doctor.DoctorId)).ToList();
+            var appointments = (await _appointmentReadService.GetAppointmentsByDoctorIdAsync(doctor.DoctorId)).ToList();
 
             var todayUtc = DateTime.UtcNow.Date;
             var tomorrowUtc = todayUtc.AddDays(1);

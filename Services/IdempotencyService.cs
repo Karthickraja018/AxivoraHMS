@@ -4,6 +4,7 @@ using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Axivora.Data;
 using Axivora.Models;
+using Axivora.Services.Interfaces;
 
 namespace Axivora.Services
 {
@@ -14,7 +15,7 @@ namespace Axivora.Services
     /// On a retry the stored response is returned unchanged, so the client receives an
     /// identical result without a duplicate appointment being created.
     /// </summary>
-    public class IdempotencyService
+    public class IdempotencyService : IIdempotencyService
     {
         private readonly AxivoraDbContext _context;
 
@@ -68,7 +69,7 @@ namespace Axivora.Services
             catch (DbUpdateException)
             {
                 // Another concurrent request inserted the same key between our check and insert
-                // — safe to swallow; the first writer wins
+                // ï¿½ safe to swallow; the first writer wins
             }
         }
 

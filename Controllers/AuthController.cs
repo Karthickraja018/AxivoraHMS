@@ -67,19 +67,14 @@ namespace Axivora.Controllers
         /// </summary>
         [HttpPost("forgot-password")]
         [ProducesResponseType(StatusCodes.Status200OK)]
-        [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> ForgotPassword([FromBody] ForgotPasswordDto forgotPasswordDto)
         {
-            try
-            {
-                // This will send a reset token via email
-                await _authService.SendPasswordResetTokenAsync(forgotPasswordDto.Email);
-                return Ok(new { message = "Password reset link sent to your email" });
-            }
-            catch (KeyNotFoundException ex)
-            {
-                return NotFound(new { message = ex.Message });
-            }
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
+
+            // Always return 200 to prevent account enumeration.
+            await _authService.SendPasswordResetTokenAsync(forgotPasswordDto.Email);
+            return Ok(new { message = "If the account exists, a password reset link has been sent." });
         }
 
         /// <summary>
@@ -93,22 +88,15 @@ namespace Axivora.Controllers
             if (!ModelState.IsValid)
                 return BadRequest(ModelState);
 
-            try
-            {
-                var result = await _authService.ResetPasswordAsync(
-                    resetPasswordDto.Email, 
-                    resetPasswordDto.ResetToken, 
-                    resetPasswordDto.NewPassword);
+            var result = await _authService.ResetPasswordAsync(
+                resetPasswordDto.Email,
+                resetPasswordDto.ResetToken,
+                resetPasswordDto.NewPassword);
 
-                if (result)
-                    return Ok(new { message = "Password reset successfully" });
+            if (result)
+                return Ok(new { message = "Password reset successfully" });
 
-                return BadRequest(new { message = "Invalid or expired reset token" });
-            }
-            catch (KeyNotFoundException ex)
-            {
-                return NotFound(new { message = ex.Message });
-            }
+            return BadRequest(new { message = "Invalid or expired reset token" });
         }
 
         /// <summary>
@@ -157,7 +145,7 @@ namespace Axivora.Controllers
 
                 return Ok(new { message = "Token revoked successfully." });
             }
-            catch (UnauthorizedAccessException ex)
+            catch (UnauthorizedAccessException)
             {
                 return Forbid();
             }

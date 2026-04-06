@@ -44,6 +44,13 @@ namespace Axivora.Data.Configurations
 
             builder.Property(u => u.OtpExpiresAt);
 
+            builder.Property(u => u.PasswordResetTokenHash)
+                   .HasMaxLength(512);
+
+            builder.Property(u => u.PasswordResetTokenExpiresAt);
+
+            builder.Property(u => u.PasswordResetRequestedAt);
+
             builder.Property(u => u.CreatedAt)
                    .IsRequired()
                    .HasDefaultValueSql("SYSDATETIME()");

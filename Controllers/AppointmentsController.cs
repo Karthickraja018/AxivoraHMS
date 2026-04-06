@@ -4,7 +4,6 @@ using System.Security.Claims;
 using System.Text.Json;
 using Axivora.DTOs;
 using Axivora.Helpers;
-using Axivora.Services;
 using Axivora.Services.Interfaces;
 
 namespace Axivora.Controllers
@@ -14,14 +13,20 @@ namespace Axivora.Controllers
     [Authorize]
     public class AppointmentsController : ControllerBase
     {
-        private readonly IAppointmentService _appointmentService;
-        private readonly IdempotencyService  _idempotencyService;
+        private readonly IAppointmentReadService _appointmentReadService;
+        private readonly IAppointmentBookingService _appointmentBookingService;
+        private readonly IAppointmentLifecycleService _appointmentLifecycleService;
+        private readonly IIdempotencyService _idempotencyService;
 
         public AppointmentsController(
-            IAppointmentService appointmentService,
-            IdempotencyService idempotencyService)
+            IAppointmentReadService appointmentReadService,
+            IAppointmentBookingService appointmentBookingService,
+            IAppointmentLifecycleService appointmentLifecycleService,
+            IIdempotencyService idempotencyService)
         {
-            _appointmentService = appointmentService;
+            _appointmentReadService = appointmentReadService;
+            _appointmentBookingService = appointmentBookingService;
+            _appointmentLifecycleService = appointmentLifecycleService;
             _idempotencyService = idempotencyService;
         }
 
@@ -66,7 +71,7 @@ namespace Axivora.Controllers
 
             try
             {
-                var result = await _appointmentService.BookAsync(dto, userId);
+                var result = await _appointmentBookingService.BookAsync(dto, userId);
 
                 // Persist the result so subsequent retries with the same key are short-circuited
                 if (!string.IsNullOrWhiteSpace(idempotencyKey))
@@ -99,11 +104,11 @@ namespace Axivora.Controllers
             if (role == "Doctor")
             {
                 var userId = int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
-                var doctorAppointments = await _appointmentService.GetDoctorAppointmentsAsync(userId, paginationParams);
+                var doctorAppointments = await _appointmentReadService.GetDoctorAppointmentsAsync(userId, paginationParams);
                 return Ok(doctorAppointments);
             }
 
-            var allAppointments = await _appointmentService.GetAllAppointmentsAsync(paginationParams);
+            var allAppointments = await _appointmentReadService.GetAllAppointmentsAsync(paginationParams);
             return Ok(allAppointments);
         }
 
@@ -119,7 +124,7 @@ namespace Axivora.Controllers
         {
             var userId = int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
             var role   = User.FindFirstValue(ClaimTypes.Role)!;
-            var appointment = await _appointmentService.GetAppointmentByIdAsync(id, userId, role);
+            var appointment = await _appointmentReadService.GetAppointmentByIdAsync(id, userId, role);
             return Ok(appointment);
         }
 
@@ -145,7 +150,7 @@ namespace Axivora.Controllers
                 FromDate = paginationParams.StartDate,
                 ToDate   = paginationParams.EndDate
             };
-            var appointments = await _appointmentService.GetMyAppointmentsAsync(userId, paginationParams, filter);
+            var appointments = await _appointmentReadService.GetMyAppointmentsAsync(userId, paginationParams, filter);
             return Ok(appointments);
         }
 
@@ -175,7 +180,7 @@ namespace Axivora.Controllers
 
             Console.WriteLine($"[DEBUG] GetMyDoctorAppointments: Start={startDate}, End={endDate}, Search={searchTerm}");
             var userId = int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
-            var appointments = await _appointmentService.GetDoctorAppointmentsAsync(userId, paginationParams);
+            var appointments = await _appointmentReadService.GetDoctorAppointmentsAsync(userId, paginationParams);
             return Ok(appointments);
         }
 
@@ -200,7 +205,7 @@ namespace Axivora.Controllers
 
             try
             {
-                var result = await _appointmentService.RescheduleAsync(id, dto, userId, role);
+                var result = await _appointmentBookingService.RescheduleAsync(id, dto, userId, role);
                 return Ok(result);
             }
             catch (UnauthorizedAccessException ex)
@@ -230,7 +235,7 @@ namespace Axivora.Controllers
             var role   = User.FindFirstValue(ClaimTypes.Role)!;
             try
             {
-                var result = await _appointmentService.CancelAsync(id, userId, role);
+                var result = await _appointmentLifecycleService.CancelAsync(id, userId, role);
                 return Ok(result);
             }
             catch (UnauthorizedAccessException ex)
@@ -257,7 +262,7 @@ namespace Axivora.Controllers
             var role   = User.FindFirstValue(ClaimTypes.Role)!;
             try
             {
-                var result = await _appointmentService.StartAsync(id, userId, role);
+                var result = await _appointmentLifecycleService.StartAsync(id, userId, role);
                 return Ok(result);
             }
             catch (InvalidOperationException ex)
@@ -280,7 +285,7 @@ namespace Axivora.Controllers
             var role   = User.FindFirstValue(ClaimTypes.Role)!;
             try
             {
-                var result = await _appointmentService.EndAsync(id, userId, role);
+                var result = await _appointmentLifecycleService.EndAsync(id, userId, role);
                 return Ok(result);
             }
             catch (InvalidOperationException ex)
@@ -303,7 +308,7 @@ namespace Axivora.Controllers
             var role   = User.FindFirstValue(ClaimTypes.Role)!;
             try
             {
-                var result = await _appointmentService.CompleteAsync(id, userId, role);
+                var result = await _appointmentLifecycleService.CompleteAsync(id, userId, role);
                 return Ok(result);
             }
             catch (InvalidOperationException ex)
@@ -332,7 +337,7 @@ namespace Axivora.Controllers
             var role   = User.FindFirstValue(ClaimTypes.Role)!;
             try
             {
-                var appointment = await _appointmentService.UpdateAppointmentStatusAsync(id, statusDto.Status, userId, role);
+                var appointment = await _appointmentLifecycleService.UpdateAppointmentStatusAsync(id, statusDto.Status, userId, role);
                 return Ok(appointment);
             }
             catch (UnauthorizedAccessException ex)

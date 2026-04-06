@@ -11,6 +11,7 @@ namespace Axivora.DTOs
         public string DiagnosisNotes { get; set; }
         public string TreatmentPlan { get; set; }
         public string ICDCode { get; set; }
+        public int? ICDId { get; set; }
         public DateTime CreatedAt { get; set; }
         public DateTime AppointmentDate { get; set; }
         public string DoctorName { get; set; }

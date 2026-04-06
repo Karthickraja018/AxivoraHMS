@@ -30,17 +30,20 @@ namespace Axivora.Services
         private readonly IMapper _mapper;
         private readonly ILogger<AppointmentService> _logger;
         private readonly IEmailService _emailService;
+        private readonly IConsultationRepository _consultationRepository;
 
         public AppointmentService(
             IAppointmentRepository repository,
             IMapper mapper,
             ILogger<AppointmentService> logger,
-            IEmailService emailService)
+            IEmailService emailService,
+            IConsultationRepository consultationRepository)
         {
             _repository   = repository;
             _mapper       = mapper;
             _logger       = logger;
             _emailService = emailService;
+            _consultationRepository = consultationRepository;
         }
 
         // Read
@@ -153,6 +156,10 @@ namespace Axivora.Services
         {
             var appointment = await _repository.GetByIdAsync(appointmentId)
                 ?? throw new KeyNotFoundException($"Appointment with ID {appointmentId} not found.");
+
+            // FIX: Prevent editing if Completed
+            if (appointment.Status?.StatusName == "Completed")
+                throw new InvalidOperationException("Cannot update a completed appointment.");
 
             await EnforceOwnershipAsync(appointment, callerUserId, callerRole);
 
@@ -409,8 +416,10 @@ namespace Axivora.Services
 
             var currentRaw = appointment.Status?.StatusName ?? string.Empty;
             var current = NormalizeStatus(currentRaw);
-            if (current is "Completed" or "InProgress")
-                throw new InvalidOperationException($"Cannot cancel an appointment that is InProgress or Completed. Current status: '{currentRaw}'.");
+            
+            // FIX: Strictly allow cancel ONLY if Scheduled
+            if (!currentRaw.Equals("Scheduled", StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException($"Cancellation is only allowed for Scheduled appointments. Current status: '{currentRaw}'.");
 
             var cancelled = await _repository.GetStatusByNameAsync("Cancelled")
                 ?? throw new InvalidOperationException("Appointment status 'Cancelled' is not configured.");
@@ -451,22 +460,50 @@ namespace Axivora.Services
 
             var currentRaw = appointment.Status?.StatusName ?? string.Empty;
             var current = NormalizeStatus(currentRaw);
-            var currentIsScheduledLike = LegacyScheduledLikeStatuses
-                .Any(x => NormalizeStatus(x).Equals(current, StringComparison.OrdinalIgnoreCase));
+            
+            if (current.Equals("InProgress", StringComparison.OrdinalIgnoreCase))
+                return await GetAppointmentByIdAsync(appointmentId); // idempotent start
 
-            if (!currentIsScheduledLike)
+            // TIME VALIDATION (only for starting brand new consultation)
+            var now = DateTime.UtcNow;
+            if (now < appointment.AppointmentStart || now > appointment.AppointmentStart.AddMinutes(10))
             {
-                if (current.Equals("InProgress", StringComparison.OrdinalIgnoreCase))
-                    return await GetAppointmentByIdAsync(appointmentId); // idempotent start
-
                 throw new InvalidOperationException(
-                    $"Only Scheduled appointments can be started. Current status: '{currentRaw}'.");
+                    $"Consultation period expired or not yet begun. Start allowed between {appointment.AppointmentStart} and {appointment.AppointmentStart.AddMinutes(10)} (UTC).");
             }
+
+            // Normal validation via state machine
+            AppointmentStatusTransitions.Validate(currentRaw, "InProgress", callerRole);
 
             var inProgress = await _repository.GetStatusByNameAsync("InProgress")
                 ?? throw new InvalidOperationException("Appointment status 'InProgress' is not configured.");
-
+ 
             appointment.StatusId = inProgress.StatusId;
+            await _repository.SaveChangesAsync();
+            return await GetAppointmentByIdAsync(appointmentId);
+        }
+
+        public async Task<AppointmentDto> EndAsync(int appointmentId, int callerUserId, string callerRole)
+        {
+            var appointment = await _repository.GetByIdAsync(appointmentId)
+                ?? throw new KeyNotFoundException($"Appointment with ID {appointmentId} not found.");
+
+            await EnforceOwnershipAsync(appointment, callerUserId, callerRole);
+            if (callerRole is not ("Doctor" or "Admin"))
+                throw new UnauthorizedAccessException("Only Doctor or Admin can end a consultation session.");
+
+            var currentRaw = appointment.Status?.StatusName ?? string.Empty;
+            
+            // Check status (idempotent if already pending)
+            if (currentRaw == "PendingDocumentation")
+                return await GetAppointmentByIdAsync(appointmentId);
+
+            AppointmentStatusTransitions.Validate(currentRaw, "PendingDocumentation", callerRole);
+
+            var pending = await _repository.GetStatusByNameAsync("PendingDocumentation")
+                ?? throw new InvalidOperationException("Appointment status 'PendingDocumentation' is not configured.");
+
+            appointment.StatusId = pending.StatusId;
             await _repository.SaveChangesAsync();
             return await GetAppointmentByIdAsync(appointmentId);
         }
@@ -481,19 +518,27 @@ namespace Axivora.Services
                 throw new UnauthorizedAccessException("Only Doctor or Admin can complete a consultation.");
 
             var currentRaw = appointment.Status?.StatusName ?? string.Empty;
-            var current = NormalizeStatus(currentRaw);
-            if (!current.Equals("InProgress", StringComparison.OrdinalIgnoreCase))
-            {
-                if (current.Equals("Completed", StringComparison.OrdinalIgnoreCase))
-                    return await GetAppointmentByIdAsync(appointmentId); // idempotent complete
+            
+            if (currentRaw == "Completed")
+                return await GetAppointmentByIdAsync(appointmentId);
 
-                throw new InvalidOperationException(
-                    $"Only InProgress appointments can be completed. Current status: '{currentRaw}'.");
+            // DATA VALIDATION (Required for Complete)
+            var consult = await _consultationRepository.GetByAppointmentIdAsync(appointmentId);
+            if (consult == null)
+                throw new InvalidOperationException("Consultation record missing. Cannot finalize.");
+
+            if (string.IsNullOrWhiteSpace(consult.ChiefComplaint) ||
+                string.IsNullOrWhiteSpace(consult.DiagnosisNotes) ||
+                (consult.Prescriptions.Count == 0 && consult.OrderedTests.Count == 0))
+            {
+                throw new InvalidOperationException("Documentation incomplete. Core logic requires: Chief Complaint, Diagnosis, and either a Prescription or Lab Order.");
             }
+
+            AppointmentStatusTransitions.Validate(currentRaw, "Completed", callerRole);
 
             var completed = await _repository.GetStatusByNameAsync("Completed")
                 ?? throw new InvalidOperationException("Appointment status 'Completed' is not configured.");
-
+ 
             appointment.StatusId = completed.StatusId;
             await _repository.SaveChangesAsync();
             return await GetAppointmentByIdAsync(appointmentId);
@@ -566,8 +611,9 @@ namespace Axivora.Services
             }
 
             var currentStatus = appointment.Status?.StatusName ?? string.Empty;
-            if (currentStatus is "InProgress" or "Completed" or "Cancelled" or "NoShow")
-                throw new InvalidOperationException("Cannot reschedule an appointment that is InProgress, Completed, Cancelled, or NoShow.");
+            // FIX: Strictly allow reschedule ONLY if Scheduled
+            if (!currentStatus.Equals("Scheduled", StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException($"Rescheduling is only allowed for Scheduled appointments. Current status: '{currentStatus}'.");
 
             var newSlot = await _repository.GetSlotByIdAsync(dto.NewSlotId)
                 ?? throw new KeyNotFoundException($"Slot with ID {dto.NewSlotId} not found.");

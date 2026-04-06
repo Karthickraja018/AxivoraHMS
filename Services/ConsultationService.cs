@@ -147,8 +147,9 @@ namespace Axivora.Services
             return await GetConsultationByIdAsync(consultation.ConsultationId);
         }
 
-        // Once an appointment is Completed, consultation notes should be locked (no further edits/additions).
-        private static readonly HashSet<string> _clinicalStatuses = ["InProgress"];
+        // Clinical states where editing/creating consultation details is allowed.
+        // PendingDocumentation is included to allow finalizing notes after the session ends.
+        private static readonly HashSet<string> _clinicalStatuses = ["InProgress", "PendingDocumentation"];
 
         private static void ValidateAppointmentStatusForConsultation(Appointment appointment)
         {

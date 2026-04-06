@@ -26,6 +26,7 @@ namespace Axivora.Services.Interfaces
 
         Task<AppointmentDto> CancelAsync(int appointmentId, int callerUserId, string callerRole);
         Task<AppointmentDto> StartAsync(int appointmentId, int callerUserId, string callerRole);
+        Task<AppointmentDto> EndAsync(int appointmentId, int callerUserId, string callerRole);
         Task<AppointmentDto> CompleteAsync(int appointmentId, int callerUserId, string callerRole);
         Task<int> AutoMarkNoShowsAsync(DateTime utcNow, CancellationToken ct);
     }

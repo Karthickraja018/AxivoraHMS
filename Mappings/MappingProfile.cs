@@ -54,6 +54,7 @@ namespace Axivora.Mappings
 
             CreateMap<Consultation, ConsultationDto>()
                 .ForMember(dest => dest.ICDCode, opt => opt.MapFrom(src => src.ICDCode != null ? src.ICDCode.Code : string.Empty))
+                .ForMember(dest => dest.ICDId,   opt => opt.MapFrom(src => src.ICDId))
                 .ForMember(dest => dest.PatientId, opt => opt.MapFrom(src => src.Appointment.PatientId))
                 .ForMember(dest => dest.DoctorId, opt => opt.MapFrom(src => src.Appointment.DoctorId))
                 .ForMember(dest => dest.AppointmentDate, opt => opt.MapFrom(src => src.Appointment.AppointmentStart))

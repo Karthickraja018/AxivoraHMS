@@ -230,7 +230,7 @@ namespace Axivora.Repositories
                 .Where(a =>
                     !a.IsDeleted &&
                     a.StatusId == scheduledStatusId &&
-                    a.AppointmentEnd < utcNow)
+                    a.AppointmentStart.AddMinutes(10) < utcNow)
                 .ToListAsync(ct);
         }
 

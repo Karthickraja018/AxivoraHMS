@@ -254,6 +254,29 @@ namespace Axivora.Controllers
         }
 
         /// <summary>
+        /// End consultation (InProgress -> PendingDocumentation). Doctor/Admin only.
+        /// </summary>
+        [HttpPatch("{id:int}/end")]
+        [Authorize(Roles = "Admin,Doctor")]
+        [ProducesResponseType(typeof(AppointmentDto), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status409Conflict)]
+        public async Task<ActionResult<AppointmentDto>> EndConsultation(int id)
+        {
+            var userId = int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+            var role   = User.FindFirstValue(ClaimTypes.Role)!;
+            try
+            {
+                var result = await _appointmentService.EndAsync(id, userId, role);
+                return Ok(result);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Conflict(new { message = ex.Message });
+            }
+        }
+
+        /// <summary>
         /// Complete consultation (InProgress -> Completed). Doctor/Admin only.
         /// </summary>
         [HttpPatch("{id:int}/complete")]

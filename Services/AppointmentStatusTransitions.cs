@@ -26,8 +26,11 @@ namespace Axivora.Services
             // Scheduled -> InProgress: Doctor / Admin only
             [("Scheduled", "InProgress")] = ["Doctor", "Admin"],
 
-            // InProgress -> Completed: Doctor / Admin only
-            [("InProgress", "Completed")] = ["Doctor", "Admin"],
+            // InProgress -> PendingDocumentation: Doctor / Admin only
+            [("InProgress", "PendingDocumentation")] = ["Doctor", "Admin"],
+
+            // PendingDocumentation -> Completed: Doctor / Admin only
+            [("PendingDocumentation", "Completed")] = ["Doctor", "Admin"],
 
             // Scheduled -> Cancelled: all roles (ownership enforced separately)
             [("Scheduled", "Cancelled")]  = ["Patient", "Doctor", "Admin"],

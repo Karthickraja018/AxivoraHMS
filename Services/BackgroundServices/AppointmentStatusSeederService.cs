@@ -18,6 +18,7 @@ namespace Axivora.Services.BackgroundServices
         [
             "Scheduled",
             "InProgress",
+            "PendingDocumentation",
             "Completed",
             "Cancelled",
             "NoShow"
@@ -65,6 +66,7 @@ namespace Axivora.Services.BackgroundServices
 
                 var scheduledId  = GetRequired("Scheduled").StatusId;
                 var inProgressId = GetRequired("InProgress").StatusId;
+                var pendingDocId = GetRequired("PendingDocumentation").StatusId;
                 var noShowId     = GetRequired("NoShow").StatusId;
 
                 // Legacy -> new mapping
@@ -74,6 +76,7 @@ namespace Axivora.Services.BackgroundServices
                     ["Checked-In"]  = scheduledId,
                     ["Rescheduled"] = scheduledId,
                     ["In Progress"] = inProgressId,
+                    ["Pending Documentation"] = pendingDocId,
                     ["No-Show"]     = noShowId
                 };
 
@@ -109,6 +112,7 @@ namespace Axivora.Services.BackgroundServices
                     fromRow.StatusName = to;
                 }
                 RenameIfPresent("In Progress", "InProgress");
+                RenameIfPresent("Pending Documentation", "PendingDocumentation");
                 RenameIfPresent("No-Show", "NoShow");
 
                 await db.SaveChangesAsync(stoppingToken);

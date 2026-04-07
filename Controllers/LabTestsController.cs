@@ -87,21 +87,24 @@ namespace Axivora.Controllers
         [HttpPost("{orderedTestId:int}/report-file")]
         [Authorize(Roles = "Admin,Doctor")]
         [RequestSizeLimit(10 * 1024 * 1024)]
+        [Consumes("multipart/form-data")]
         [ProducesResponseType(typeof(LabResultDto), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         [ProducesResponseType(StatusCodes.Status403Forbidden)]
         public async Task<ActionResult<LabResultDto>> UploadReportFile(
             int orderedTestId,
-            [FromForm] IFormFile file,
-            [FromForm] string? summary,
+            [FromForm] UploadLabReportFileDto request,
             CancellationToken ct)
         {
+            if (request.File is null || request.File.Length == 0)
+                return BadRequest(new { message = "File is required." });
+
             var role   = User.FindFirstValue(ClaimTypes.Role)!;
             var userId = int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
             try
             {
-                var dto = await _labTestService.UploadReportFileAsync(orderedTestId, file, summary, userId, role, ct);
+                var dto = await _labTestService.UploadReportFileAsync(orderedTestId, request.File, request.Summary, userId, role, ct);
                 return Ok(dto);
             }
             catch (KeyNotFoundException ex)

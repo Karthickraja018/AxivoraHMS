@@ -467,15 +467,24 @@ namespace Axivora.Services
             if (current.Equals("InProgress", StringComparison.OrdinalIgnoreCase))
                 return await GetAppointmentByIdAsync(appointmentId); // idempotent start
 
-            // TIME VALIDATION (only for starting brand new consultation)
-            var now = DateTime.UtcNow;
-            if (now < appointment.AppointmentStart || now > appointment.AppointmentStart.AddMinutes(10))
+            // Allow doctors/admin to recover missed sessions from NoShow.
+            if (current.Equals("NoShow", StringComparison.OrdinalIgnoreCase))
             {
-                throw new InvalidOperationException(
-                    $"Consultation period expired or not yet begun. Start allowed between {appointment.AppointmentStart} and {appointment.AppointmentStart.AddMinutes(10)} (UTC).");
+                var inProgressRecovery = await _repository.GetStatusByNameAsync("InProgress")
+                    ?? throw new InvalidOperationException("Appointment status 'InProgress' is not configured.");
+
+                appointment.StatusId = inProgressRecovery.StatusId;
+                await _repository.SaveChangesAsync();
+                return await GetAppointmentByIdAsync(appointmentId);
             }
 
-            // Normal validation via state machine
+            if (current.Equals("Completed", StringComparison.OrdinalIgnoreCase) ||
+                current.Equals("Cancelled", StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException($"Cannot start consultation from status '{currentRaw}'.");
+            }
+
+            // Normal validation via state machine for non-terminal states.
             _transitionValidator.ValidateTransition(currentRaw, "InProgress", callerRole);
 
             var inProgress = await _repository.GetStatusByNameAsync("InProgress")

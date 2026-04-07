@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using Microsoft.AspNetCore.Http;
 
 namespace Axivora.DTOs
 {
@@ -55,5 +56,13 @@ namespace Axivora.DTOs
         public string DoctorName { get; set; } = null!;
         public bool HasReportFile { get; set; }
         public string? ReportFileName { get; set; }
+    }
+
+    public class UploadLabReportFileDto
+    {
+        [Required(ErrorMessage = "File is required")]
+        public IFormFile File { get; set; } = null!;
+
+        public string? Summary { get; set; }
     }
 }

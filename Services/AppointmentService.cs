@@ -387,12 +387,12 @@ namespace Axivora.Services
                     "Patient {PatientId} booked slot {SlotId} -> appointment {AppointmentId}.",
                     patient.PatientId, slot.Id, appointment.AppointmentId);
 
-                // Enqueue confirmation email after successful booking
+                // Enqueue scheduled appointment email after successful booking
                 var patientWithUser = await _repository.GetPatientWithUserAsync(patient.PatientId);
                 var doctorName      = await _repository.GetDoctorFullNameAsync(slot.DoctorId);
                 if (patientWithUser?.User?.Email is string patientEmail)
                 {
-                    await _emailService.SendAppointmentRequestReceivedAsync(
+                    await _emailService.SendAppointmentScheduledAsync(
                         patientEmail,
                         patientWithUser.FullName,
                         doctorName ?? "Doctor",

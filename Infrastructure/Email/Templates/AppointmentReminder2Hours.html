@@ -7,12 +7,12 @@
   <style>
     body { margin: 0; padding: 0; background-color: #f4f6f9; font-family: Arial, sans-serif; }
     .wrapper { max-width: 600px; margin: 40px auto; background: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
-    .header { background-color: #1565c0; padding: 32px 40px; text-align: center; }
+    .header { background-color: #c62828; padding: 32px 40px; text-align: center; }
     .header h1 { margin: 0; color: #ffffff; font-size: 22px; letter-spacing: 0.5px; }
     .body { padding: 36px 40px; color: #333333; }
     .body p { font-size: 15px; line-height: 1.7; margin: 0 0 16px; }
-    .detail-card { background: #f3f8ff; border-left: 4px solid #1565c0; border-radius: 4px; padding: 20px 24px; margin: 16px 0; }
-    .detail-card .row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #d7e7ff; font-size: 14px; }
+    .detail-card { background: #ffebee; border-radius: 6px; padding: 20px 24px; margin: 16px 0; }
+    .detail-card .row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #ffcdd2; font-size: 14px; }
     .detail-card .row:last-child { border-bottom: none; }
     .detail-card .label { color: #666666; }
     .detail-card .value { color: #1a1a1a; font-weight: bold; }
@@ -22,11 +22,11 @@
 <body>
   <div class="wrapper">
     <div class="header">
-      <h1>&#9200; Appointment Reminder – In 2 hours</h1>
+      <h1>⏰ Appointment Reminder – In 2 Hours</h1>
     </div>
     <div class="body">
       <p>Dear <strong>{PatientName}</strong>,</p>
-      <p>This is a reminder that your appointment is coming up soon. Here are your details:</p>
+      <p>This is a reminder that your appointment is <strong>coming up soon</strong>. Here are your appointment details:</p>
       <div class="detail-card">
         <div class="row">
           <span class="label">Doctor</span>
@@ -37,10 +37,13 @@
           <span class="value">{AppointmentTime}</span>
         </div>
       </div>
-      <p>Please arrive 10 minutes early. If you can’t make it, cancel as soon as possible in the AxivoraHMS portal.</p>
+      <p>Please be prepared:<br/>
+         • Arrive 10 minutes before your appointment<br/>
+         • Have your ID and insurance information ready<br/>
+         • If you need to cancel, please do so immediately in the AxivoraHMS portal</p>
     </div>
     <div class="footer">
-      &copy; 2026 AxivoraHMS &middot; All rights reserved
+      &copy; 2025 AxivoraHMS &middot; All rights reserved
     </div>
   </div>
 </body>

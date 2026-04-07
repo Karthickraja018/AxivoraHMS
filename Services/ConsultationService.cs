@@ -149,14 +149,23 @@ namespace Axivora.Services
 
         // Clinical states where editing/creating consultation details is allowed.
         // PendingDocumentation is included to allow finalizing notes after the session ends.
-        private static readonly HashSet<string> _clinicalStatuses = ["InProgress", "PendingDocumentation"];
+        private static readonly HashSet<string> _clinicalStatuses = ["inprogress", "pendingdocumentation"];
+
+        private static string NormalizeStatus(string value) =>
+            string.IsNullOrWhiteSpace(value)
+                ? string.Empty
+                : value.Trim()
+                    .Replace(" ", string.Empty, StringComparison.Ordinal)
+                    .Replace("-", string.Empty, StringComparison.Ordinal)
+                    .ToLowerInvariant();
 
         private static void ValidateAppointmentStatusForConsultation(Appointment appointment)
         {
             var statusName = appointment.Status?.StatusName ?? string.Empty;
-            if (!_clinicalStatuses.Contains(statusName))
+            var normalized = NormalizeStatus(statusName);
+            if (!_clinicalStatuses.Contains(normalized))
                 throw new InvalidOperationException(
-                    "Consultation can only be created/edited for active appointments (InProgress).");
+                    "Consultation can only be created/edited for active appointments (InProgress/PendingDocumentation).");
         }
 
         public async Task<ConsultationDto> UpdateConsultationAsync(int consultationId, UpdateConsultationDto updateConsultationDto)

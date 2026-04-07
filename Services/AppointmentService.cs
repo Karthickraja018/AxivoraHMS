@@ -539,9 +539,13 @@ namespace Axivora.Services
             if (consult == null)
                 throw new InvalidOperationException("Consultation record missing. Cannot finalize.");
 
+            // Check if both prescriptions and tests are empty/null
+            var prescriptionCount = consult.Prescriptions?.Count ?? 0;
+            var testCount = consult.OrderedTests?.Count ?? 0;
+
             if (string.IsNullOrWhiteSpace(consult.ChiefComplaint) ||
                 string.IsNullOrWhiteSpace(consult.DiagnosisNotes) ||
-                (consult.Prescriptions.Count == 0 && consult.OrderedTests.Count == 0))
+                (prescriptionCount == 0 && testCount == 0))
             {
                 throw new InvalidOperationException("Documentation incomplete. Core logic requires: Chief Complaint, Diagnosis, and either a Prescription or Lab Order.");
             }

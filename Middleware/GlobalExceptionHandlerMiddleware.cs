@@ -24,6 +24,13 @@ namespace Axivora.Middleware
             catch (Exception ex)
             {
                 _logger.LogError(ex, "An unhandled exception occurred: {Message}", ex.Message);
+
+                if (context.Response.HasStarted)
+                {
+                    _logger.LogWarning("The response has already started, the global exception handler will not write an error response.");
+                    return;
+                }
+
                 await HandleExceptionAsync(context, ex);
             }
         }
@@ -60,6 +67,7 @@ namespace Axivora.Middleware
                 Details = exception.Message
             };
 
+            context.Response.Clear();
             context.Response.ContentType = "application/json";
             context.Response.StatusCode = (int)statusCode;
 

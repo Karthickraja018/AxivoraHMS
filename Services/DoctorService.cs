@@ -5,6 +5,7 @@ using Axivora.Services.Interfaces;
 using Axivora.Helpers;
 using Axivora.Security;
 using Axivora.Repositories.Interfaces;
+using System.Security.Cryptography;
 
 namespace Axivora.Services
 {
@@ -72,13 +73,16 @@ namespace Axivora.Services
             if (await _repository.EmailExistsAsync(dto.Email))
                 throw new InvalidOperationException($"User with email {dto.Email} already exists.");
 
+            var temporaryPassword = GenerateTemporaryPassword();
+
             var user = new User
             {
                 Email           = dto.Email,
-                PasswordHash    = _passwordHasher.Hash(dto.Password),
+                PasswordHash    = _passwordHasher.Hash(temporaryPassword),
                 IsActive        = true,
                 IsDeleted       = false,
                 IsEmailVerified = true,
+                MustChangePassword = true,
                 CreatedAt       = DateTime.UtcNow,
                 UpdatedAt       = DateTime.UtcNow
             };
@@ -97,7 +101,7 @@ namespace Axivora.Services
             await _repository.SaveChangesAsync();
 
             var salutation = string.IsNullOrWhiteSpace(dto.DisplayName) ? dto.Email : dto.DisplayName.Trim();
-            await _emailService.SendDoctorAccountCreatedAsync(dto.Email, salutation, dto.Password);
+            await _emailService.SendDoctorAccountCreatedAsync(dto.Email, salutation, temporaryPassword);
         }
 
         /// <summary>
@@ -137,6 +141,7 @@ namespace Axivora.Services
                     LicenseNumber   = dto.LicenseNumber,
                     FullName        = dto.FullName,
                     Qualification   = dto.Qualification,
+                    Specialization  = dto.Specialization,
                     ExperienceYears = dto.ExperienceYears,
                     AddressId       = addressId,
                     IsActive        = true,
@@ -190,6 +195,9 @@ namespace Axivora.Services
 
             if (dto.Qualification != null)
                 doctor.Qualification = dto.Qualification;
+
+            if (dto.Specialization != null)
+                doctor.Specialization = dto.Specialization;
 
             if (dto.ExperienceYears.HasValue)
                 doctor.ExperienceYears = dto.ExperienceYears;
@@ -367,6 +375,32 @@ namespace Axivora.Services
         {
             var doctors = await _repository.GetByDepartmentAsync(departmentId);
             return _mapper.Map<IEnumerable<DoctorDto>>(doctors);
+        }
+
+        private static string GenerateTemporaryPassword()
+        {
+            const string lower = "abcdefghjkmnpqrstuvwxyz";
+            const string upper = "ABCDEFGHJKMNPQRSTUVWXYZ";
+            const string digits = "23456789";
+            const string specials = "@$!%*?&";
+            var all = lower + upper + digits + specials;
+
+            Span<char> password = stackalloc char[12];
+            password[0] = lower[RandomNumberGenerator.GetInt32(lower.Length)];
+            password[1] = upper[RandomNumberGenerator.GetInt32(upper.Length)];
+            password[2] = digits[RandomNumberGenerator.GetInt32(digits.Length)];
+            password[3] = specials[RandomNumberGenerator.GetInt32(specials.Length)];
+
+            for (var i = 4; i < password.Length; i++)
+                password[i] = all[RandomNumberGenerator.GetInt32(all.Length)];
+
+            for (var i = password.Length - 1; i > 0; i--)
+            {
+                var j = RandomNumberGenerator.GetInt32(i + 1);
+                (password[i], password[j]) = (password[j], password[i]);
+            }
+
+            return new string(password);
         }
     }
 }

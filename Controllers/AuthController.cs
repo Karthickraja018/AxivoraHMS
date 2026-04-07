@@ -100,6 +100,36 @@ namespace Axivora.Controllers
         }
 
         /// <summary>
+        /// Authenticated password change (used for doctor first-login temporary credentials flow).
+        /// </summary>
+        [HttpPost("change-password")]
+        [Authorize]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordDto dto)
+        {
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
+
+            var userId = int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+
+            try
+            {
+                await _authService.ChangePasswordAsync(userId, dto.CurrentPassword, dto.NewPassword);
+                return Ok(new { message = "Password updated successfully." });
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return Unauthorized(new { message = ex.Message });
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+        }
+
+        /// <summary>
         /// Issue a new JWT and refresh token using a valid refresh token (token rotation)
         /// </summary>
         [HttpPost("refresh-token")]

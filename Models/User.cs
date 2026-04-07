@@ -20,6 +20,9 @@ namespace Axivora.Models
         /// <summary>True once the user has verified their email address via OTP.</summary>
         public bool IsEmailVerified { get; set; }
 
+        /// <summary>When true, user must update temporary password before accessing protected workflows.</summary>
+        public bool MustChangePassword { get; set; }
+
         /// <summary>Hashed OTP stored temporarily until the user verifies their email.</summary>
         public string? EmailVerificationOtp { get; set; }
 

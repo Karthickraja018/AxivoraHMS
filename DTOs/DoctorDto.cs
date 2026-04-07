@@ -8,6 +8,7 @@ namespace Axivora.DTOs
         public string LicenseNumber { get; set; }
         public string FullName { get; set; }
         public string Qualification { get; set; }
+        public string? Specialization { get; set; }
         public int? ExperienceYears { get; set; }
         public bool IsActive { get; set; }
         public AddressDto Address { get; set; }
@@ -58,10 +59,6 @@ namespace Axivora.DTOs
         [EmailAddress]
         public string Email { get; set; } = null!;
 
-        [Required]
-        [StringLength(100, MinimumLength = 8)]
-        public string Password { get; set; } = null!;
-
         /// <summary>Optional display name used in the invitation email.</summary>
         [StringLength(150)]
         public string? DisplayName { get; set; }
@@ -83,6 +80,9 @@ namespace Axivora.DTOs
         [StringLength(150)]
         public string? Qualification { get; set; }
 
+        [StringLength(150)]
+        public string? Specialization { get; set; }
+
         [Range(0, 100)]
         public int? ExperienceYears { get; set; }
 
@@ -99,6 +99,9 @@ namespace Axivora.DTOs
 
         [StringLength(150)]
         public string? Qualification { get; set; }
+
+        [StringLength(150)]
+        public string? Specialization { get; set; }
 
         [Range(0, 100)]
         public int? ExperienceYears { get; set; }
@@ -122,6 +125,9 @@ namespace Axivora.DTOs
 
         [StringLength(150)]
         public string? Qualification { get; set; }
+
+        [StringLength(150)]
+        public string? Specialization { get; set; }
 
         [Range(0, 100)]
         public int? ExperienceYears { get; set; }

@@ -82,7 +82,8 @@ namespace Axivora.Services
                 TokenExpiresAt = _tokenService.GetJwtExpiryTime(),
                 Role = registerDto.Role,
                 EmailVerified = false,
-                ProfileCompleted = profileCompleted
+                ProfileCompleted = profileCompleted,
+                MustChangePassword = user.MustChangePassword
             };
         }
 
@@ -118,7 +119,8 @@ namespace Axivora.Services
                 TokenExpiresAt = _tokenService.GetJwtExpiryTime(),
                 Role = roleName,
                 EmailVerified = user.IsEmailVerified,
-                ProfileCompleted = profileCompleted
+                ProfileCompleted = profileCompleted,
+                MustChangePassword = user.MustChangePassword
             };
         }
 
@@ -158,8 +160,26 @@ namespace Axivora.Services
                 TokenExpiresAt = _tokenService.GetJwtExpiryTime(),
                 Role = roleName,
                 EmailVerified = user.IsEmailVerified,
-                ProfileCompleted = profileCompleted
+                ProfileCompleted = profileCompleted,
+                MustChangePassword = user.MustChangePassword
             };
+        }
+
+        public async Task ChangePasswordAsync(int userId, string currentPassword, string newPassword)
+        {
+            var user = await _repository.GetUserByIdAsync(userId)
+                ?? throw new KeyNotFoundException("User not found.");
+
+            if (!_passwordHasher.Verify(currentPassword, user.PasswordHash))
+                throw new UnauthorizedAccessException("Current password is incorrect.");
+
+            user.PasswordHash = _passwordHasher.Hash(newPassword);
+            user.MustChangePassword = false;
+            user.PasswordResetTokenHash = null;
+            user.PasswordResetTokenExpiresAt = null;
+            user.PasswordResetRequestedAt = null;
+            user.UpdatedAt = DateTime.UtcNow;
+            await _repository.SaveChangesAsync();
         }
 
         public async Task<bool> RevokeTokenAsync(string refreshToken, int callerUserId)

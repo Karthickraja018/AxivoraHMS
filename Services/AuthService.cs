@@ -44,6 +44,9 @@ namespace Axivora.Services
         public Task<bool> ResetPasswordAsync(string email, string resetToken, string newPassword) =>
             _passwordRecoveryService.ResetPasswordAsync(email, resetToken, newPassword);
 
+        public Task ChangePasswordAsync(int userId, string currentPassword, string newPassword) =>
+            _authenticationService.ChangePasswordAsync(userId, currentPassword, newPassword);
+
         public Task<bool> IsEmailAvailableAsync(string email) =>
             _authenticationService.IsEmailAvailableAsync(email);
     }

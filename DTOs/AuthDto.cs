@@ -89,6 +89,23 @@ namespace Axivora.DTOs
         public string Role { get; set; } = null!;
         public bool EmailVerified { get; set; }
         public bool ProfileCompleted { get; set; }
+        public bool MustChangePassword { get; set; }
+    }
+
+    public class ChangePasswordDto
+    {
+        [Required]
+        public string CurrentPassword { get; set; } = null!;
+
+        [Required]
+        [StringLength(100, MinimumLength = 8)]
+        [RegularExpression(@"^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$",
+            ErrorMessage = "Password must contain uppercase, lowercase, number, and special character")]
+        public string NewPassword { get; set; } = null!;
+
+        [Required]
+        [Compare("NewPassword")]
+        public string ConfirmPassword { get; set; } = null!;
     }
 
     public class RefreshTokenRequestDto
